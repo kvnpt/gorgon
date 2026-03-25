@@ -1,0 +1,191 @@
+{
+  "_description": "Valid neume pairing rules from NeumeReplacements.ts. For replacement maps, 'isPairedWith' means the support neume is REMOVED (replaced with null) when paired with those base neumes. 'isNotPairedWith' means the support neume is REMOVED when NOT paired with those base neumes.",
+  "gorgonReplacements": {
+    "_description": "Rules for which gorgon neumes are invalid on which base neumes. replaceWith=null means the gorgon is removed.",
+    "Gorgon_Top": {
+      "isPairedWith_removesGorgon": [
+        "PetastiWithIson", "Petasti", "PetastiPlusOligon", "PetastiPlusKentimaAbove",
+        "PetastiPlusHypsiliRight", "PetastiPlusHypsiliLeft",
+        "PetastiPlusHypsiliPlusKentimaHorizontal", "PetastiPlusHypsiliPlusKentimaVertical",
+        "PetastiPlusDoubleHypsili", "PetastiKentimataDoubleYpsili",
+        "PetastiKentimaDoubleYpsiliRight", "PetastiKentimaDoubleYpsiliLeft",
+        "PetastiTripleYpsili", "PetastiKentimataTripleYpsili", "PetastiKentimaTripleYpsili",
+        "PetastiPlusApostrophos", "PetastiPlusElaphron", "PetastiPlusElaphronPlusApostrophos",
+        "PetastiPlusRunningElaphron",
+        "PetastiHamili", "PetastiHamiliApostrofos", "PetastiHamiliElafron",
+        "PetastiHamiliElafronApostrofos", "PetastiDoubleHamili", "PetastiDoubleHamiliApostrofos"
+      ],
+      "note": "Removed from all petasti neumes except PetastiPlusHyporoe"
+    },
+    "Gorgon_Bottom": {
+      "isNotPairedWith_removesGorgon_description": "Only valid on these base neumes:",
+      "allowedBaseNeumes": [
+        "Apostrophos", "Ison", "Oligon", "OligonPlusKentima", "OligonPlusKentimaBelow",
+        "OligonPlusKentimaAbove", "OligonPlusHypsiliRight", "OligonPlusHypsiliLeft",
+        "OligonPlusHypsiliPlusKentimaHorizontal", "OligonPlusHypsiliPlusKentimaVertical",
+        "OligonPlusDoubleHypsili", "OligonKentimataDoubleYpsili",
+        "OligonKentimaDoubleYpsiliRight", "OligonKentimaDoubleYpsiliLeft",
+        "OligonTripleYpsili", "OligonKentimataTripleYpsili", "OligonKentimaTripleYpsili",
+        "OligonPlusIson", "OligonPlusApostrophos", "OligonPlusElaphron", "OligonPlusHyporoe",
+        "OligonPlusElaphronPlusApostrophos", "OligonPlusHamili",
+        "Kentemata", "Elaphron", "ElaphronPlusApostrophos", "Hamili"
+      ]
+    },
+    "GorgonDottedLeft": { "sameAs": "Gorgon_Top" },
+    "GorgonDottedRight": { "sameAs": "Gorgon_Top" },
+    "Digorgon": { "sameAs": "Gorgon_Top" },
+    "DigorgonDottedLeft1": { "sameAs": "Gorgon_Top" },
+    "DigorgonDottedLeft2": { "sameAs": "Gorgon_Top" },
+    "DigorgonDottedRight": { "sameAs": "Gorgon_Top" },
+    "Trigorgon": { "sameAs": "Gorgon_Top" },
+    "TrigorgonDottedLeft1": { "sameAs": "Gorgon_Top" },
+    "TrigorgonDottedLeft2": { "sameAs": "Gorgon_Top" },
+    "TrigorgonDottedRight": { "sameAs": "Gorgon_Top" },
+    "Argon": {
+      "onlyValidOn": ["KentemataPlusOligon"]
+    },
+    "Hemiolion": {
+      "onlyValidOn": ["KentemataPlusOligon"]
+    },
+    "Diargon": {
+      "onlyValidOn": ["KentemataPlusOligon"]
+    }
+  },
+  "timeReplacements": {
+    "_description": "Rules for which time neumes are invalid on which base neumes.",
+    "Hapli": {
+      "removedWhenPairedWith": [
+        "Kentemata", "OligonPlusHamiliPlusKentemata", "OligonPlusIsonPlusKentemata",
+        "OligonPlusHyporoePlusKentemata", "OligonPlusElaphronPlusKentemata",
+        "OligonPlusApostrophosPlusKentemata", "OligonPlusElaphronPlusApostrophosPlusKentemata",
+        "OligonKentimaMiddleKentimata", "OligonPlusKentemataPlusHypsiliLeft",
+        "OligonPlusKentemataPlusHypsiliRight", "OligonPlusRunningElaphronPlusKentemata",
+        "OligonPlusKentemata",
+        "PetastiPlusRunningElaphron",
+        "OligonPlusIson", "OligonPlusApostrophos", "OligonPlusElaphron",
+        "OligonPlusHyporoe", "OligonPlusElaphronPlusApostrophos", "OligonPlusHamili"
+      ]
+    },
+    "Dipli": {
+      "removedWhenPairedWith": [
+        "all kentemata neumes", "all petasti neumes",
+        "KentemataPlusOligon", "OligonPlusKentimaBelow",
+        "OligonPlusIson", "OligonPlusApostrophos", "OligonPlusElaphron",
+        "OligonPlusHyporoe", "OligonPlusElaphronPlusApostrophos", "OligonPlusHamili"
+      ]
+    },
+    "Tripli": { "sameAs": "Dipli" },
+    "Tetrapli": { "sameAs": "Dipli" },
+    "Klasma_Top": {
+      "removedWhenPairedWith": [
+        "all kentemata neumes", "all bottom-only klasma neumes",
+        "Hyporoe", "OligonPlusHyporoe", "IsonPlusApostrophos", "DoubleApostrophos"
+      ],
+      "bottomOnlyKlasmaNeumes_note": "Petasti neumes plus OligonPlusDoubleHypsili through OligonPlusHamili range"
+    },
+    "Klasma_Bottom": {
+      "removedWhenPairedWith": [
+        "all kentemata neumes", "all top-only klasma neumes",
+        "Hyporoe", "OligonPlusHyporoe", "IsonPlusApostrophos", "DoubleApostrophos"
+      ],
+      "topOnlyKlasmaNeumes_note": "Ison, KentemataPlusOligon, Oligon, OligonPlusKentimaBelow, OligonPlusKentima, OligonPlusHypsiliRight, descending neumes"
+    }
+  },
+  "vocalExpressionReplacements": {
+    "_description": "Rules for vocal expression neume validity.",
+    "Antikenoma": {
+      "removedWhenPairedWith": [
+        "all kentemata neumes", "all rests",
+        "IsonPlusApostrophos", "DoubleApostrophos", "PetastiPlusRunningElaphron",
+        "OligonPlusIson", "OligonPlusApostrophos", "OligonPlusElaphron",
+        "OligonPlusHyporoe", "OligonPlusElaphronPlusApostrophos", "OligonPlusHamili"
+      ]
+    },
+    "Heteron": {
+      "onlyValidOn": [
+        "Ison", "Oligon", "OligonPlusApostrophos", "OligonPlusDoubleHypsili",
+        "OligonPlusHypsiliLeft", "OligonPlusHypsiliPlusKentimaHorizontal",
+        "OligonPlusHypsiliPlusKentimaVertical", "OligonPlusHypsiliRight",
+        "OligonPlusKentima", "OligonPlusKentimaAbove", "OligonPlusKentimaBelow"
+      ]
+    },
+    "HeteronConnecting": {
+      "removedWhenPairedWith": ["all rests"]
+    },
+    "Psifiston": {
+      "removedWhenPairedWith": [
+        "all rests", "Kentemata", "all descending neumes (Apostrophos through TripleHamili)",
+        "Hyporoe", "RunningElaphron", "PetastiPlusRunningElaphron"
+      ]
+    },
+    "Homalon": {
+      "removedWhenPairedWith": [
+        "all petasti neumes", "all kentemata neumes", "all rests",
+        "all descending neumes", "all oligon-plus-descending neumes"
+      ]
+    },
+    "HomalonConnecting": {
+      "removedWhenPairedWith": [
+        "all petasti neumes", "kentemata neumes (except OligonPlusKentemata)", "all rests",
+        "DoubleApostrophos", "IsonPlusApostrophos", "Hyporoe",
+        "all oligon-plus-descending neumes"
+      ]
+    },
+    "Vareia": {
+      "removedWhenPairedWith": [
+        "kentemata neumes (except OligonPlusKentemata)", "all rests",
+        "KentemataPlusOligon", "RunningElaphron", "PetastiPlusRunningElaphron",
+        "Hyporoe", "all oligon-plus-descending neumes"
+      ]
+    }
+  },
+  "multiNoteNeumeDecomposition": {
+    "_description": "Maps compound neumes to their component primary/secondary/tertiary single neumes for analysis purposes.",
+    "primaryNeumeMap": {
+      "OligonPlusIsonPlusKentemata": "Kentemata",
+      "OligonPlusApostrophosPlusKentemata": "Kentemata",
+      "OligonPlusElaphronPlusKentemata": "Kentemata",
+      "OligonPlusElaphronPlusApostrophosPlusKentemata": "Kentemata",
+      "OligonPlusHamiliPlusKentemata": "Kentemata",
+      "OligonPlusHyporoePlusKentemata": "Kentemata",
+      "OligonPlusRunningElaphronPlusKentemata": "Kentemata",
+      "OligonPlusKentemata": "Kentemata",
+      "RunningElaphron": "Elaphron",
+      "PetastiPlusRunningElaphron": "PetastiPlusElaphron",
+      "KentemataPlusOligon": "Oligon",
+      "Hyporoe": "Apostrophos"
+    },
+    "secondaryNeumeMap": {
+      "OligonPlusIsonPlusKentemata": "Ison",
+      "OligonPlusApostrophosPlusKentemata": "Apostrophos",
+      "OligonPlusElaphronPlusKentemata": "Elaphron",
+      "OligonPlusElaphronPlusApostrophosPlusKentemata": "ElaphronPlusApostrophos",
+      "OligonPlusHamiliPlusKentemata": "Hamili",
+      "OligonPlusHyporoePlusKentemata": "Hyporoe",
+      "OligonPlusRunningElaphronPlusKentemata": "Elaphron",
+      "OligonPlusKentemata": "Oligon",
+      "RunningElaphron": "Apostrophos",
+      "PetastiPlusRunningElaphron": "Apostrophos",
+      "KentemataPlusOligon": "Kentemata",
+      "Hyporoe": "Apostrophos"
+    },
+    "tertiaryNeumeMap": {
+      "OligonPlusRunningElaphronPlusKentemata": "Apostrophos"
+    }
+  },
+  "measureBarPositioning": {
+    "aboveNeumes": [
+      "Hyporoe", "KentemataPlusOligon", "OligonPlusHyporoePlusKentemata",
+      "OligonPlusRunningElaphronPlusKentemata", "OligonPlusHyporoe",
+      "PetastiPlusHyporoe", "PetastiPlusRunningElaphron", "RunningElaphron"
+    ],
+    "leftToAboveMap": {
+      "MeasureBarRight": "MeasureBarRightAbove",
+      "MeasureBarTop": "MeasureBarTopAbove",
+      "MeasureBarDouble": "MeasureBarDoubleAbove",
+      "MeasureBarShortDouble": "MeasureBarShortDoubleAbove",
+      "MeasureBarTheseos": "MeasureBarTheseosAbove",
+      "MeasureBarShortTheseos": "MeasureBarShortTheseosAbove"
+    }
+  }
+}

@@ -1,0 +1,500 @@
+@font-face {
+  font-family: 'Neanes';
+  src: url('fonts/Neanes.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #1a1a1a;
+  --surface: #242424;
+  --surface2: #2e2e2e;
+  --border: #3a3a3a;
+  --text: #e0d8cc;
+  --text2: #8888aa;
+  --accent: #e85d3a;
+  --accent2: #ff8c42;
+  --score-bg: #f5f0e8;
+  --score-text: #1a1a1a;
+  --neume-color: #000;
+  --lyric-color: #1a1a1a;
+  --cursor-color: #e85d3a;
+  --selected: rgba(232, 93, 58, 0.2);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Header */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#header h1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.header-right { display: flex; gap: 0.5rem; }
+
+.header-btn {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.header-btn:active { background: var(--accent); color: #fff; }
+
+/* Toolbar */
+#toolbar {
+  padding: 0.4rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text2);
+}
+
+#score-title {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 100px;
+}
+
+#score-mode {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+/* Score Area */
+#score-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.score {
+  background: var(--score-bg);
+  width: 100%;
+  max-width: 700px;
+  min-height: 900px;
+  padding: 2rem 1.5rem;
+  border-radius: 4px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.4);
+  position: relative;
+}
+
+/* Score title display */
+.score-title {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--score-text);
+  margin-bottom: 0.25rem;
+  font-family: 'Georgia', serif;
+}
+
+.score-mode-label {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 1.5rem;
+  font-family: 'Georgia', serif;
+  font-style: italic;
+}
+
+/* Reflowable score content — neumes flow like text */
+.score-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0;
+  min-height: 3.5rem;
+}
+
+/* Individual note column (neume + lyric) */
+.note-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.1rem 0.15rem;
+  border-radius: 3px;
+  min-width: 1.2rem;
+  position: relative;
+}
+
+.note-col:hover {
+  background: rgba(232, 93, 58, 0.08);
+}
+
+.note-col.selected {
+  background: var(--selected);
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.note-col.cursor::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cursor-color);
+  animation: blink 1s step-end infinite;
+}
+
+/* Neume glyph */
+.neume {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--neume-color);
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Supporting neume — above the base neume */
+.neume-support {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #c00;
+}
+
+/* Supporting neume — below the base neume (apli, dipli, etc.) */
+.neume-support-below {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #c00;
+}
+
+/* Lyric text */
+.lyric {
+  font-size: 0.85rem;
+  color: var(--lyric-color);
+  font-family: 'Georgia', serif;
+  min-height: 1.1rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.lyric-input {
+  font-size: 0.85rem;
+  font-family: 'Georgia', serif;
+  color: var(--lyric-color);
+  background: rgba(232, 93, 58, 0.1);
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  text-align: center;
+  width: 3rem;
+  outline: none;
+  padding: 0.1rem;
+}
+
+/* Cursor insertion point */
+.insert-point {
+  width: 2px;
+  min-height: 3.5rem;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.insert-point:hover {
+  background: rgba(232, 93, 58, 0.3);
+}
+
+.insert-point.active {
+  background: var(--cursor-color);
+  animation: blink 1s step-end infinite;
+}
+
+/* Martyria display — glyph pair (note on top, tone below) */
+.martyria-col .neume {
+  color: #c00;
+}
+
+.martyria-note {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #c00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.martyria-tone {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #c00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -0.2rem;
+}
+
+/* Barline — vertical stroke between measures */
+.barline {
+  width: 2px;
+  min-height: 3rem;
+  background: var(--neume-color);
+  margin: 0 0.4rem;
+  flex-shrink: 0;
+  align-self: stretch;
+  opacity: 0.5;
+}
+
+/* Section break — forces a new line */
+.section-break {
+  flex-basis: 100%;
+  height: 0.8rem;
+  border-bottom: 1px dashed rgba(0,0,0,0.15);
+  margin-bottom: 0.4rem;
+}
+
+/* Mode key marker */
+.mode-key-marker {
+  width: 0.3rem;
+  min-height: 1rem;
+  flex-shrink: 0;
+}
+
+/* Spacer */
+.spacer {
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+/* Warning highlight on note */
+.note-col.has-warning {
+  outline: 2px solid #e8a33a;
+  outline-offset: -1px;
+  background: rgba(232, 163, 58, 0.1);
+}
+
+/* Analysis info bar at bottom of score */
+.analysis-bar {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  margin-top: 1rem;
+  background: rgba(0,0,0,0.04);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #555;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+.analysis-note {
+  font-weight: 700;
+  color: var(--score-text);
+}
+
+.analysis-scale {
+  color: #666;
+  font-style: italic;
+}
+
+.analysis-beat {
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-warn {
+  color: #e8a33a;
+  cursor: help;
+}
+
+/* Invalid palette button (greyed out) */
+.palette-btn.invalid {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.palette-btn.invalid:active {
+  background: var(--surface2);
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Palette */
+#palette {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.palette-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+}
+
+.palette-tab {
+  background: none;
+  color: var(--text2);
+  border: none;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+.palette-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3rem, 1fr));
+  gap: 2px;
+  padding: 0.4rem;
+  max-height: 7rem;
+  overflow-y: auto;
+}
+
+.palette-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 2.8rem;
+}
+
+.palette-btn:active {
+  background: var(--accent);
+}
+
+.palette-btn .glyph {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--text);
+}
+
+.palette-btn:active .glyph {
+  color: #fff;
+}
+
+.palette-btn .glyph-name {
+  font-size: 0.5rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.palette-actions {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
+.action-btn {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.action-btn:active { background: var(--accent); color: #fff; }
+.action-btn.danger { color: #e85d3a; }
+.action-btn.danger:active { background: #c0392b; color: #fff; }
+
+/* Print styles */
+@media print {
+  body { background: #fff; }
+  #header, #toolbar, #palette { display: none; }
+  #score-area { padding: 0; overflow: visible; }
+  .score {
+    box-shadow: none;
+    border-radius: 0;
+    max-width: none;
+    min-height: auto;
+  }
+  .insert-point, .note-col.cursor::after { display: none; }
+  .analysis-bar { display: none; }
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  #header { padding: 0.4rem 0.75rem; }
+  #header h1 { font-size: 0.95rem; }
+  .score { padding: 1.2rem 1rem; }
+  .palette-grid { grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr)); }
+}

@@ -1,0 +1,140 @@
+{
+  "_description": "Fthora validation and scale activation rules extracted from LayoutService.ts. 'validNotes' indicates which note values (from Scales.noteValues) the fthora may be placed on. 'activatesScale' indicates the scale activated by the fthora. 'fromNote' indicates which note the scale is anchored on (determines shift calculation).",
+  "fthoraValidation": {
+    "Diatonic": {
+      "validNotes": "any",
+      "note": "Diatonic fthoras (DiatonicNiLow, DiatonicPa, DiatonicVou, DiatonicGa, DiatonicThi, DiatonicKe, DiatonicZo, DiatonicNiHigh) can be placed on any note."
+    },
+    "HardChromatic": {
+      "validNotes": "any",
+      "note": "HardChromaticPa and HardChromaticThi can be placed on any note."
+    },
+    "SoftChromatic": {
+      "validNotes": "any",
+      "note": "SoftChromaticPa and SoftChromaticThi can be placed on any note."
+    },
+    "Enharmonic": {
+      "validNotes": ["Zo", "Ga", "ZoHigh", "Vou", "VouHigh"],
+      "validNoteValues": [-2, 2, 5, 1, 8]
+    },
+    "Zygos": {
+      "validNotes": ["Thi"],
+      "validNoteValues": [3]
+    },
+    "Kliton": {
+      "validNotes": ["Thi"],
+      "validNoteValues": [3]
+    },
+    "Spathi": {
+      "validNotes": ["Ke", "Ga"],
+      "validNoteValues": [4, 2]
+    },
+    "GeneralSharp": {
+      "validNotes": ["Ga"],
+      "validNoteValues": [2],
+      "note": "Applies a persistent sharp to Vou when on Diatonic scale"
+    },
+    "GeneralFlat": {
+      "validNotes": ["Ke"],
+      "validNoteValues": [4],
+      "note": "Applies a persistent flat to ZoHigh when on Diatonic scale"
+    }
+  },
+  "fthoraScaleActivation": {
+    "_description": "Maps fthora prefix to the scale it activates. For Enharmonic and Spathi, the activated scale depends on which note the fthora is placed.",
+    "Diatonic": "Diatonic",
+    "GeneralSharp": "Diatonic",
+    "GeneralFlat": "Diatonic",
+    "HardChromatic": "HardChromatic",
+    "SoftChromatic": "SoftChromatic",
+    "Enharmonic": {
+      "onGa": "EnharmonicGa",
+      "onZoHigh": "EnharmonicZoHigh",
+      "onZo": "EnharmonicZo",
+      "onVou": "EnharmonicVou",
+      "onVouHigh": "EnharmonicVouHigh",
+      "default": "EnharmonicZoHigh"
+    },
+    "Zygos": "Zygos",
+    "Spathi": {
+      "onKe": "Spathi",
+      "onGa": "SpathiGa",
+      "default": "Spathi"
+    },
+    "Kliton": "Kliton"
+  },
+  "fthoraShiftCalculation": {
+    "_description": "When a fthora activates a scale, the shift is calculated as (fthoraNote - currentPhysicalNote). For chromatic scales, shift is taken mod 4.",
+    "Diatonic": {
+      "DiatonicNiLow": { "fromNote": "Ni", "noteValue": -1 },
+      "DiatonicPa": { "fromNote": "Pa", "noteValue": 0 },
+      "DiatonicVou": { "fromNote": "Vou", "noteValue": 1 },
+      "DiatonicGa": { "fromNote": "Ga", "noteValue": 2 },
+      "DiatonicThi": { "fromNote": "Thi", "noteValue": 3 },
+      "DiatonicKe": { "fromNote": "Ke", "noteValue": 4 },
+      "DiatonicZo": { "fromNote": "ZoHigh", "noteValue": 5 },
+      "DiatonicNiHigh": { "fromNote": "NiHigh", "noteValue": 6 },
+      "GeneralFlat": "currentVirtualNote (no shift change)",
+      "GeneralSharp": "currentVirtualNote (no shift change)"
+    },
+    "HardChromatic": {
+      "HardChromaticPa": { "fromNote": "Pa", "noteValue": 0, "mod": 4 },
+      "HardChromaticThi": { "fromNote": "Thi", "noteValue": 3, "mod": 4 }
+    },
+    "SoftChromatic": {
+      "SoftChromaticPa": { "fromNote": "Pa", "noteValue": 0, "mod": 4 },
+      "SoftChromaticThi": { "fromNote": "Thi", "noteValue": 3, "mod": 4 }
+    },
+    "Kliton": { "fromNote": "Thi", "noteValue": 3 },
+    "Zygos": { "fromNote": "Thi", "noteValue": 3 },
+    "Spathi": { "fromNote": "Ke", "noteValue": 4 },
+    "SpathiGa": { "fromNote": "Ga", "noteValue": 2 },
+    "EnharmonicGa": { "fromNote": "Ga", "noteValue": 2 },
+    "EnharmonicVou": { "fromNote": "Vou", "noteValue": 1 },
+    "EnharmonicVouHigh": { "fromNote": "VouHigh", "noteValue": 8 },
+    "EnharmonicZo": { "fromNote": "Zo", "noteValue": -2 },
+    "EnharmonicZoHigh": { "fromNote": "ZoHigh", "noteValue": 5 }
+  },
+  "fthoraEnumMembers": {
+    "_description": "All Fthora enum values grouped by placement position",
+    "top": [
+      "DiatonicNiLow_Top", "DiatonicPa_Top", "DiatonicVou_Top", "DiatonicGa_Top",
+      "DiatonicThi_Top", "DiatonicKe_Top", "DiatonicZo_Top", "DiatonicNiHigh_Top",
+      "HardChromaticPa_Top", "HardChromaticThi_Top",
+      "SoftChromaticPa_Top", "SoftChromaticThi_Top",
+      "Enharmonic_Top", "Zygos_Top", "Kliton_Top", "Spathi_Top",
+      "GeneralSharp_Top", "GeneralFlat_Top"
+    ],
+    "topSecondary": [
+      "DiatonicNiLow_TopSecondary", "DiatonicPa_TopSecondary", "DiatonicVou_TopSecondary", "DiatonicGa_TopSecondary",
+      "DiatonicThi_TopSecondary", "DiatonicKe_TopSecondary", "DiatonicZo_TopSecondary", "DiatonicNiHigh_TopSecondary",
+      "HardChromaticPa_TopSecondary", "HardChromaticThi_TopSecondary",
+      "SoftChromaticPa_TopSecondary", "SoftChromaticThi_TopSecondary",
+      "Enharmonic_TopSecondary", "Zygos_TopSecondary", "Kliton_TopSecondary", "Spathi_TopSecondary",
+      "GeneralSharp_TopSecondary", "GeneralFlat_TopSecondary"
+    ],
+    "topTertiary": [
+      "DiatonicNiLow_TopTertiary", "DiatonicPa_TopTertiary", "DiatonicVou_TopTertiary", "DiatonicGa_TopTertiary",
+      "DiatonicThi_TopTertiary", "DiatonicKe_TopTertiary", "DiatonicZo_TopTertiary", "DiatonicNiHigh_TopTertiary",
+      "HardChromaticPa_TopTertiary", "HardChromaticThi_TopTertiary",
+      "SoftChromaticPa_TopTertiary", "SoftChromaticThi_TopTertiary",
+      "Enharmonic_TopTertiary", "Zygos_TopTertiary", "Kliton_TopTertiary", "Spathi_TopTertiary",
+      "GeneralSharp_TopTertiary", "GeneralFlat_TopTertiary"
+    ],
+    "bottom": [
+      "DiatonicNiLow_Bottom", "DiatonicPa_Bottom", "DiatonicVou_Bottom", "DiatonicGa_Bottom",
+      "DiatonicThi_Bottom", "DiatonicKe_Bottom", "DiatonicZo_Bottom", "DiatonicNiHigh_Bottom",
+      "HardChromaticPa_Bottom", "HardChromaticThi_Bottom",
+      "SoftChromaticPa_Bottom", "SoftChromaticThi_Bottom",
+      "Enharmonic_Bottom", "Zygos_Bottom", "Kliton_Bottom", "Spathi_Bottom",
+      "GeneralSharp_Bottom", "GeneralFlat_Bottom"
+    ],
+    "martyria": [
+      "DiatonicNiLow", "DiatonicPa", "DiatonicVou", "DiatonicGa",
+      "DiatonicThi", "DiatonicKe", "DiatonicZo", "DiatonicNiHigh",
+      "HardChromaticPa", "HardChromaticThi",
+      "SoftChromaticPa", "SoftChromaticThi",
+      "Enharmonic", "Zygos", "Kliton", "Spathi"
+    ]
+  }
+}

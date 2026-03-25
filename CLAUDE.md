@@ -1,0 +1,39 @@
+# CLAUDE.md — Gorgon
+
+Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
+
+## Stack
+
+- Vanilla JS, no build step, no framework
+- Express server (serves static + SBMuFL API)
+- Neanes font (WOFF2, GPL-3.0, SBMuFL PUA-mapped glyphs)
+- 375 glyphs from SBMuFL spec (`data/sbmufl/`)
+- Docker on hades, Caddy reverse proxy, Cloudflare DNS
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `server.js` | Express server, health endpoint, SBMuFL API |
+| `public/app.js` | Editor logic: data model, palette, renderer, events |
+| `public/app.css` | Styles (dark UI, paper-like score, print CSS) |
+| `public/index.html` | App shell |
+| `public/fonts/Neanes.woff2` | Byzantine neume font |
+| `data/sbmufl/*.json` | Glyph catalog (glyphnames, ranges, classes) |
+
+## Architecture
+
+- Score = array of elements (neume, martyria, linebreak, spacer)
+- Each neume references an SBMuFL glyph name + codepoint
+- Rendering: font glyphs in PUA range via `font-family: 'Neanes'`
+- Palette organised by SBMuFL ranges (13 categories → 6 tabs)
+- Supporting neumes (gorgon, klasma) attach to selected base neume
+- Auto-save to localStorage every 5s
+
+## License
+
+GPL-3.0 (compatible with Neanes ecosystem)
+
+## Project Docs
+
+Feasibility, proposition, and ecosystem analysis at `/home/ubuntu/byzantine-chant-writer/`

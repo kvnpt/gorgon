@@ -1,0 +1,86 @@
+{
+  "_description": "Pitch attraction rules from PlaybackService.ts and AnalysisService.ts. These automatic pitch adjustments apply during playback when not overridden by accidentals or explicit ignoreAttractions flags.",
+  "defaultAttractions": {
+    "zo": {
+      "description": "When the melody descends after ZoHigh, ZoHigh is flattened by defaultAttractionZoMoria. This only applies in Diatonic, Kliton, or Zygos scales, and not when permanentEnharmonicZo is active.",
+      "condition": "virtualNote === ZoHigh AND scale is Diatonic/Kliton/Zygos AND useDefaultAttractionZo is true AND permanentEnharmonicZo is false",
+      "pivotLogic": "The system looks ahead from ZoHigh to determine if the melody descends. If the next different-pitched note is lower than ZoHigh, the zoFlatPivot is activated. If it ascends, the zoNaturalPivot is activated instead.",
+      "effect": "frequency += defaultAttractionZoMoria",
+      "defaultAttractionZoMoria": -4,
+      "note": "A negative moria value means flattening (lowering pitch)"
+    },
+    "ke": {
+      "description": "When ZoHigh ascends (zoNaturalPivot is activated), Ke is attracted toward ZoHigh by being raised by defaultAttractionKeMoria.",
+      "condition": "virtualNote === Ke AND zoNaturalPivotActivated is true",
+      "effect": "frequency += defaultAttractionKeMoria",
+      "defaultAttractionKeMoria": 5,
+      "note": "A positive moria value means sharpening (raising pitch). The zoNaturalPivot is cleared when the melody descends below Ke."
+    }
+  },
+  "pivotMechanism": {
+    "description": "The pivot system determines which attraction to apply based on melodic direction after ZoHigh.",
+    "zoFlatPivot": {
+      "activated": "When next note after ZoHigh is lower than ZoHigh",
+      "cleared": "When current note is not ZoHigh"
+    },
+    "zoNaturalPivot": {
+      "activated": "When next note after ZoHigh is higher than ZoHigh",
+      "cleared": "When current note descends below Ke"
+    }
+  },
+  "generalAlterations": {
+    "_description": "General sharps and flats from fthora apply persistent accidentals to specific notes.",
+    "generalFlat": {
+      "description": "When a GeneralFlat fthora is in effect, every ZoHigh without an explicit accidental receives an automatic flat.",
+      "chrysanthineAccidentalValue": "Flat_2_Right",
+      "nonChrysanthineAccidentalValue": "Flat_6_Right"
+    },
+    "generalSharp": {
+      "description": "When a GeneralSharp fthora is in effect, every Vou without an explicit accidental receives an automatic sharp.",
+      "chrysanthineAccidentalValue": "Sharp_2_Left",
+      "nonChrysanthineAccidentalValue": "Sharp_4_Left"
+    }
+  },
+  "accidentalPersistence": {
+    "description": "When an accidental is applied to a note, it persists on that physical note until the melody moves to a different note. Subsequent visits to the same physical note inherit the accidental even without an explicit marking.",
+    "fields": {
+      "lastAlterationMoria": "The moria alteration amount from the last accidental",
+      "lastAlterationNote": "The physical ScaleNote that the accidental was applied to"
+    }
+  },
+  "accidentalValues": {
+    "_description": "Maps accidental enum names to their moria alteration values (default non-chrysanthine).",
+    "Sharp_2_Left": 2,
+    "Sharp_4_Left": 4,
+    "Sharp_6_Left": 6,
+    "Sharp_8_Left": 8,
+    "Flat_2_Right": -2,
+    "Flat_4_Right": -4,
+    "Flat_6_Right": -6,
+    "Flat_8_Right": -8
+  },
+  "chrysanthineAccidentals": {
+    "_description": "In Chrysanthine mode, accidentals are proportional to the interval to the next note rather than fixed moria values.",
+    "multipliers": {
+      "2_crossbeam": 0.5,
+      "4_crossbeam": 0.25,
+      "6_crossbeam": 0.75
+    },
+    "note": "The 8_crossbeam (3 crossbeam) accidentals are undefined in the Chrysanthine system."
+  },
+  "legetosMode": {
+    "description": "Mode 4 Diatonic from Pa or Vou activates legetos mode, which uses the Legetos scale intervals instead of standard Diatonic.",
+    "condition": "mode === 4 AND scale === Diatonic AND (scaleNote === Pa OR scaleNote === Vou)",
+    "effect": "Uses Legetos scale intervals: [8, 10, 12, 12, 8, 10, 12] instead of Diatonic [12, 10, 8, 12, 12, 10, 8]"
+  },
+  "permanentEnharmonicZo": {
+    "description": "When set on a mode key, forces the enharmonic scale to be used regardless of the current scale setting. The enharmonic intervals are constructed dynamically based on the context.",
+    "effect": "Overrides any scale to use the Enharmonic playback scale with intervals constructed for ZoHigh context: [diatonic..., 12, 12, 6, 12]"
+  },
+  "playbackDefaults": {
+    "defaultFrequencyDi": 196,
+    "defaultBpm": 120,
+    "startingNote": "Thi",
+    "startingScale": "Diatonic"
+  }
+}

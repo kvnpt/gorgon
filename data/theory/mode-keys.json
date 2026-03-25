@@ -1,0 +1,463 @@
+{
+  "_description": "Mode key templates from ModeKeys.ts. Each entry defines a mode key signature with its scale, starting note, visual martyria representation, and optional fthora.",
+  "templates": [
+    {
+      "id": 100,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "Pa",
+      "description": "Heirmologic and Sticheraric",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "note": "ModeSign.Pa",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicPa_Top" }
+    },
+    {
+      "id": 101,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "Ke",
+      "description": "Tetraphonic Papadic and Old Sticheraric",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "note": "ModeSign.Ke",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicKe_Top" }
+    },
+    {
+      "id": 102,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "Ke",
+      "description": "Tetraphonic",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusHypsiliRight"
+    },
+    {
+      "id": 103,
+      "mode": 1,
+      "scale": "SoftChromatic",
+      "scaleNote": "Ke",
+      "description": "Tetraphonic Soft Chromatic",
+      "fthora": "SoftChromaticThi_Top",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "note": "ModeSign.Ke",
+      "fthoraAboveNote": "SoftChromaticThi_Top"
+    },
+    {
+      "id": 104,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "Thi",
+      "description": "Heirmologic from Di",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusKentimaAbove"
+    },
+    {
+      "id": 105,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "PaHigh",
+      "description": "Heptaphonic",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "quantitativeNeumeRight": "OligonPlusHypsiliPlusKentimaVertical"
+    },
+    {
+      "id": 106,
+      "mode": 1,
+      "scale": "Diatonic",
+      "scaleNote": "PaHigh",
+      "description": "Heptaphonic",
+      "fthora": "DiatonicPa_Top",
+      "martyria": "ModeSign.AlphaWithDeltaHat",
+      "quantitativeNeumeRight": "OligonPlusHypsiliPlusKentimaVertical",
+      "fthoraAboveQuantitativeNeumeRight": "DiatonicPa_Top"
+    },
+    {
+      "id": 200,
+      "mode": 2,
+      "scale": "SoftChromatic",
+      "scaleNote": "Thi",
+      "description": "Sticheraric and Papadic",
+      "martyria": "ModeSign.SoftChromatic2",
+      "note": "ModeSign.Thi",
+      "fthoraAboveNote": "SoftChromaticThi_Top"
+    },
+    {
+      "id": 201,
+      "mode": 2,
+      "scale": "SoftChromatic",
+      "scaleNote": "Vou",
+      "description": "Heirmologic and Slow Papadic",
+      "martyria": "ModeSign.SoftChromatic2",
+      "note": "ModeSign.Vou",
+      "fthoraAboveNote": "SoftChromaticThi_Top"
+    },
+    {
+      "id": 202,
+      "mode": 2,
+      "scale": "HardChromatic",
+      "scaleNote": "Pa",
+      "description": "Heirmologic Hard Chromatic from Pa",
+      "martyria": "ModeSign.SoftChromatic2",
+      "note": "ModeSign.Pa",
+      "fthoraAboveNote": "HardChromaticPa_Top"
+    },
+    {
+      "id": 203,
+      "mode": 2,
+      "scale": "HardChromatic",
+      "scaleNote": "Vou",
+      "description": "Heirmologic Hard Chromatic from Vou",
+      "fthora": "HardChromaticPa_Top",
+      "martyria": "ModeSign.SoftChromatic2",
+      "note": "ModeSign.Vou",
+      "fthoraAboveNote": "HardChromaticPa_Top"
+    },
+    {
+      "id": 300,
+      "mode": 3,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Nana",
+      "martyria": "ModeSign.Nana",
+      "note": "ModeSign.Ga",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicGa_Top" }
+    },
+    {
+      "id": 301,
+      "mode": 3,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Heirmologic and Sticheraric",
+      "martyria": "ModeSign.NanaOld",
+      "note": "ModeSign.Ga",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicGa_Top" }
+    },
+    {
+      "id": 302,
+      "mode": 3,
+      "scale": "Diatonic",
+      "scaleNote": "Pa",
+      "description": "Middle",
+      "martyria": "ModeSign.Nana",
+      "note": "ModeSign.Ga",
+      "quantitativeNeumeRight": "RunningElaphron",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicGa_Top" }
+    },
+    {
+      "id": 303,
+      "mode": 3,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Papadic",
+      "fthora": "DiatonicNiLow_Top",
+      "martyria": "ModeSign.Nana",
+      "note": "ModeSign.Ga",
+      "fthoraAboveNote": "DiatonicNiLow_Top"
+    },
+    {
+      "id": 400,
+      "mode": 4,
+      "scale": "Diatonic",
+      "scaleNote": "Thi",
+      "description": "Papadic Agia",
+      "martyria": "ModeSign.DeltaWithDeltaHat",
+      "note": "ModeSign.Thi",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicThi_Top" }
+    },
+    {
+      "id": 401,
+      "mode": 4,
+      "scale": "SoftChromatic",
+      "scaleNote": "Thi",
+      "description": "Heirmologic Soft Chromatic",
+      "martyria": "ModeSign.DeltaWithDeltaHat",
+      "note": "ModeSign.Thi",
+      "fthoraAboveNote": "SoftChromaticThi_Top"
+    },
+    {
+      "id": 402,
+      "mode": 4,
+      "scale": "Diatonic",
+      "scaleNote": "Pa",
+      "description": "Sticheraric",
+      "martyria": "ModeSign.DeltaWithDeltaHat",
+      "note": "ModeSign.Pa",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicPa_Top" }
+    },
+    {
+      "id": 403,
+      "mode": 4,
+      "scale": "Diatonic",
+      "scaleNote": "Vou",
+      "description": "Heirmologic Legetos",
+      "martyria": "ModeSign.DeltaWithDeltaHat",
+      "quantitativeNeumeRight": "RunningElaphron"
+    },
+    {
+      "id": 404,
+      "mode": 4,
+      "scale": "Diatonic",
+      "scaleNote": "Vou",
+      "description": "Heirmologic Legetos",
+      "martyria": "ModeSign.Legetos",
+      "note": "ModeSign.Vou"
+    },
+    {
+      "id": 405,
+      "mode": 4,
+      "scale": "HardChromatic",
+      "scaleNote": "Thi",
+      "description": "Heirmologic Nenano",
+      "martyria": "ModeSign.DeltaWithDeltaHat",
+      "note": "ModeSign.Thi",
+      "fthoraAboveNote": "HardChromaticThi_Top"
+    },
+    {
+      "id": 406,
+      "mode": 4,
+      "scale": "Kliton",
+      "scaleNote": "Thi",
+      "description": "Kliton",
+      "martyria": "ModeSign.FourthCapital",
+      "note": "ModeSign.Thi",
+      "fthoraAboveNote": "Kliton_Top"
+    },
+    {
+      "id": 500,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "Pa",
+      "description": "Sticheraric and Papadic",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicPa_Top" }
+    },
+    {
+      "id": 501,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "Ke",
+      "description": "Heirmologic",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Ke",
+      "quantitativeNeumeAboveNote": "ModeSign.OligonPlusHypsili"
+    },
+    {
+      "id": 506,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "Ke",
+      "description": "Heirmologic as from Pa",
+      "fthora": "DiatonicPa_Top",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusHypsiliRight",
+      "fthoraAboveQuantitativeNeumeRight": "DiatonicPa_Top"
+    },
+    {
+      "id": 502,
+      "mode": 5,
+      "scale": "Spathi",
+      "scaleNote": "Ke",
+      "description": "Spathi",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusHypsiliRight",
+      "fthoraAboveQuantitativeNeumeRight": "Spathi_Bottom"
+    },
+    {
+      "id": 503,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "ZoHigh",
+      "description": "Pentaphonic",
+      "fthora": "Enharmonic_Top",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusHypsiliLeft",
+      "fthoraAboveQuantitativeNeumeRight": "Enharmonic_Top"
+    },
+    {
+      "id": 504,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Minor / Makam Buselik",
+      "fthora": "Enharmonic_Top",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusKentima",
+      "fthoraAboveQuantitativeNeumeRight": "Enharmonic_Top"
+    },
+    {
+      "id": 505,
+      "mode": 5,
+      "scale": "Diatonic",
+      "scaleNote": "Thi",
+      "description": "Triphonic",
+      "martyria": "ModeSign.Alpha",
+      "note": "ModeSign.Pa",
+      "quantitativeNeumeRight": "OligonPlusKentimaAbove"
+    },
+    {
+      "id": 600,
+      "mode": 6,
+      "scale": "HardChromatic",
+      "scaleNote": "Pa",
+      "description": "Sticheraric and Papadic",
+      "martyria": "ModeSign.SoftChromatic6",
+      "note": "ModeSign.Pa",
+      "fthoraAboveNote": "HardChromaticPa_Top"
+    },
+    {
+      "id": 601,
+      "mode": 6,
+      "scale": "SoftChromatic",
+      "scaleNote": "Vou",
+      "description": "Heirmologic Soft Chromatic from Vou",
+      "martyria": "ModeSign.SoftChromatic6",
+      "note": "ModeSign.Vou",
+      "fthoraAboveNote": "SoftChromaticThi_Top"
+    },
+    {
+      "id": 602,
+      "mode": 6,
+      "scale": "SoftChromatic",
+      "scaleNote": "Thi",
+      "description": "Heirmologic Soft Chromatic from Di",
+      "martyria": "ModeSign.SoftChromatic6",
+      "note": "ModeSign.Vou",
+      "fthoraAboveNote": "SoftChromaticThi_Top",
+      "quantitativeNeumeRight": "KentemataPlusOligon"
+    },
+    {
+      "id": 603,
+      "mode": 6,
+      "scale": "HardChromatic",
+      "scaleNote": "Thi",
+      "description": "Papadic Nenano",
+      "martyria": "ModeSign.SoftChromatic6",
+      "note": "ModeSign.Pa",
+      "note2": "ModeSign.Thi",
+      "fthoraAboveNote": "HardChromaticPa_Top",
+      "quantitativeNeumeAboveNote2": "ModeSign.OligonPlusKentima"
+    },
+    {
+      "id": 604,
+      "mode": 6,
+      "scale": "HardChromatic",
+      "scaleNote": "PaHigh",
+      "description": "Heptaphonic / Makam Hicazkar",
+      "martyria": "ModeSign.SoftChromatic6",
+      "note": "ModeSign.Pa",
+      "fthoraAboveNote": "HardChromaticPa_Top",
+      "quantitativeNeumeRight": "OligonPlusHypsiliPlusKentimaVertical",
+      "fthoraAboveQuantitativeNeumeRight": "HardChromaticThi_Top"
+    },
+    {
+      "id": 700,
+      "mode": 7,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Sticheraric and Heirmologic",
+      "martyria": "ModeSign.VarysZo",
+      "note": "ModeSign.Ga",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicGa_Top" }
+    },
+    {
+      "id": 701,
+      "mode": 7,
+      "scale": "Diatonic",
+      "scaleNote": "Zo",
+      "description": "Diatonic",
+      "martyria": "ModeSign.VarysZo",
+      "note": "ModeSign.Zo"
+    },
+    {
+      "id": 702,
+      "mode": 7,
+      "scale": "Diatonic",
+      "scaleNote": "Zo",
+      "description": "Enharmonic",
+      "fthora": "Enharmonic_Top",
+      "martyria": "ModeSign.VarysZo",
+      "note": "ModeSign.Zo",
+      "fthoraAboveNote": "Enharmonic_Top"
+    },
+    {
+      "id": 703,
+      "mode": 7,
+      "scale": "Diatonic",
+      "scaleNote": "Thi",
+      "description": "Pentaphonic / Makam Ferahnak",
+      "fthora": "DiatonicNiLow_Top",
+      "martyria": "ModeSign.VarysZo",
+      "note": "ModeSign.Zo",
+      "quantitativeNeumeRight": "OligonPlusHypsiliLeft",
+      "fthoraAboveQuantitativeNeumeRight": "DiatonicNiLow_Top"
+    },
+    {
+      "id": 704,
+      "mode": 7,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Tetraphonic",
+      "martyria": "ModeSign.VarysZo",
+      "note": "ModeSign.Zo",
+      "quantitativeNeumeRight": "OligonPlusHypsiliRight"
+    },
+    {
+      "id": 800,
+      "mode": 8,
+      "scale": "Diatonic",
+      "scaleNote": "Ni",
+      "description": "Sticheraric and Papadic",
+      "martyria": "ModeSign.Delta",
+      "note": "ModeSign.Ni",
+      "optionalFthoras": { "fthoraAboveNote": "DiatonicNiLow_Top" }
+    },
+    {
+      "id": 801,
+      "mode": 8,
+      "scale": "Diatonic",
+      "scaleNote": "Ga",
+      "description": "Heirmologic",
+      "fthora": "DiatonicNiLow_Top",
+      "martyria": "ModeSign.Delta",
+      "quantitativeNeumeRight": "OligonPlusKentimaAbove",
+      "fthoraAboveQuantitativeNeumeRight": "DiatonicNiLow_Top"
+    },
+    {
+      "id": 802,
+      "mode": 8,
+      "scale": "Diatonic",
+      "scaleNote": "Vou",
+      "description": "Diphonic",
+      "martyria": "ModeSign.Delta",
+      "note": "ModeSign.Ni",
+      "quantitativeNeumeRight": "KentemataPlusOligon"
+    },
+    {
+      "id": 803,
+      "mode": 8,
+      "scale": "Diatonic",
+      "scaleNote": "NiHigh",
+      "description": "Heptaphonic",
+      "martyria": "ModeSign.Delta",
+      "note": "ModeSign.Ni",
+      "quantitativeNeumeRight": "OligonPlusHypsiliPlusKentimaVertical"
+    },
+    {
+      "id": 804,
+      "mode": 8,
+      "scale": "Diatonic",
+      "scaleNote": "Pa",
+      "description": "Sticheraric and Papadic from Pa",
+      "fthora": "DiatonicNiLow_Top",
+      "martyria": "ModeSign.Delta",
+      "fthoraAboveNote": "DiatonicNiLow_Top",
+      "note": "ModeSign.Pa"
+    }
+  ]
+}

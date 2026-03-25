@@ -1,0 +1,211 @@
+{
+  "_description": "Byzantine chant scale definitions. Intervals are in moria (72 moria = 1 octave). Notes are the standard Byzantine solfege names. scaleNoteMap maps each ScaleNote to its interval index within the scale.",
+  "scaleEnum": [
+    "Diatonic",
+    "SoftChromatic",
+    "HardChromatic",
+    "EnharmonicGa",
+    "EnharmonicZo",
+    "EnharmonicZoHigh",
+    "EnharmonicVou",
+    "EnharmonicVouHigh",
+    "Zygos",
+    "Spathi",
+    "SpathiGa",
+    "Kliton"
+  ],
+  "noteOrder": [
+    "ZoLow", "NiLow", "PaLow", "VouLow", "GaLow", "ThiLow", "KeLow",
+    "Zo", "Ni", "Pa", "Vou", "Ga", "Thi", "Ke",
+    "ZoHigh", "NiHigh", "PaHigh", "VouHigh", "GaHigh", "ThiHigh", "KeHigh"
+  ],
+  "noteValues": {
+    "ZoLow": -9,
+    "NiLow": -8,
+    "PaLow": -7,
+    "VouLow": -6,
+    "GaLow": -5,
+    "ThiLow": -4,
+    "KeLow": -3,
+    "Zo": -2,
+    "Ni": -1,
+    "Pa": 0,
+    "Vou": 1,
+    "Ga": 2,
+    "Thi": 3,
+    "Ke": 4,
+    "ZoHigh": 5,
+    "NiHigh": 6,
+    "PaHigh": 7,
+    "VouHigh": 8,
+    "GaHigh": 9,
+    "ThiHigh": 10,
+    "KeHigh": 11
+  },
+  "scales": {
+    "Diatonic": {
+      "intervals": [12, 10, 8, 12, 12, 10, 8],
+      "defaultIntervals": [12, 10, 8],
+      "structure": "diapason",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "SoftChromatic": {
+      "intervals": [8, 14, 8, 12],
+      "defaultIntervals": [8, 14, 8],
+      "structure": "tetrachord",
+      "notes": ["Ni", "Pa", "Vou", "Ga"],
+      "scaleNoteMap": {
+        "ZoLow": 0, "NiLow": 1, "PaLow": 2, "VouLow": 3, "GaLow": 0, "ThiLow": 1, "KeLow": 2,
+        "Zo": 3, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 0, "Ke": 1,
+        "ZoHigh": 2, "NiHigh": 3, "PaHigh": 0, "VouHigh": 1, "GaHigh": 2, "ThiHigh": 3, "KeHigh": 0
+      }
+    },
+    "HardChromatic": {
+      "intervals": [6, 20, 4, 12],
+      "defaultIntervals": [6, 20, 4],
+      "structure": "tetrachord",
+      "notes": ["Ni", "Pa", "Vou", "Ga"],
+      "scaleNoteMap": {
+        "ZoLow": 3, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 0, "KeLow": 1,
+        "Zo": 2, "Ni": 3, "Pa": 0, "Vou": 1, "Ga": 2, "Thi": 3, "Ke": 0,
+        "ZoHigh": 1, "NiHigh": 2, "PaHigh": 3, "VouHigh": 0, "GaHigh": 1, "ThiHigh": 2, "KeHigh": 3
+      }
+    },
+    "Legetos": {
+      "intervals": [8, 10, 12, 12, 8, 10, 12],
+      "defaultIntervals": [8, 10, 12],
+      "structure": "diapason",
+      "notes": ["Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh", "NiHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 5, "NiLow": 6, "PaLow": 0, "VouLow": 1, "GaLow": 2, "ThiLow": 3, "KeLow": 4,
+        "Zo": 5, "Ni": 6, "Pa": 0, "Vou": 1, "Ga": 2, "Thi": 3, "Ke": 4,
+        "ZoHigh": 5, "NiHigh": 6, "PaHigh": 0, "VouHigh": 1, "GaHigh": 2, "ThiHigh": 3, "KeHigh": 4
+      }
+    },
+    "Zygos": {
+      "intervals": [18, 4, 16, 4, 12, 10, 8],
+      "defaultIntervals": [18, 4, 16, 4],
+      "structure": "zygos",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "ZygosLegetos": {
+      "intervals": [18, 4, 20, 4, 12, 6, 9],
+      "defaultIntervals": [18, 4, 20, 4],
+      "structure": "zygos",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "Kliton": {
+      "intervals": [12, 14, 12, 4, 12, 10, 8],
+      "defaultIntervals": [14, 12, 4],
+      "structure": "kliton",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "SpathiKe": {
+      "intervals": [12, 10, 8, 20, 4, 4, 14],
+      "defaultIntervals": [20, 4, 4, 14],
+      "structure": "spathiKe",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "SpathiGa": {
+      "intervals": [12, 14, 4, 4, 20, 10, 8],
+      "defaultIntervals": [14, 4, 4, 20],
+      "structure": "spathiGa",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "EnharmonicZo": {
+      "intervals": [12, 12, 6, 12],
+      "defaultIntervals": [12, 12, 6],
+      "structure": "tetrachord",
+      "notes": ["Zo", "Ni", "Pa", "Vou"],
+      "scaleNoteMap": {
+        "ZoLow": 1, "NiLow": 2, "PaLow": 3, "VouLow": 0, "GaLow": 1, "ThiLow": 2, "KeLow": 3,
+        "Zo": 0, "Ni": 1, "Pa": 2, "Vou": 3, "Ga": 0, "Thi": 1, "Ke": 2,
+        "ZoHigh": 3, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 0, "KeHigh": 1
+      }
+    },
+    "EnharmonicGa": {
+      "intervals": [12, 12, 6],
+      "defaultIntervals": [12, 12, 6],
+      "structure": "tetrachord",
+      "notes": ["Ga", "Thi", "Ke"],
+      "scaleNoteMap": {
+        "ZoLow": 1, "NiLow": 2, "PaLow": 0, "VouLow": 1, "GaLow": 2, "ThiLow": 0, "KeLow": 1,
+        "Zo": 2, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 0, "Thi": 1, "Ke": 2,
+        "ZoHigh": 0, "NiHigh": 1, "PaHigh": 2, "VouHigh": 0, "GaHigh": 1, "ThiHigh": 2, "KeHigh": 0
+      }
+    },
+    "EnharmonicZoHigh": {
+      "intervals": [12, 10, 8, 12, 12, 6, 12],
+      "defaultIntervals": [12, 12, 6],
+      "structure": "diapason",
+      "notes": ["Ni", "Pa", "Vou", "Ga", "Thi", "Ke", "ZoHigh"],
+      "_note": "When permanentEnharmonicZo is active, intervals become [diatonic..., 12, 12, 6, 12]",
+      "scaleNoteMap": {
+        "ZoLow": 6, "NiLow": 0, "PaLow": 1, "VouLow": 2, "GaLow": 3, "ThiLow": 4, "KeLow": 5,
+        "Zo": 6, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 3, "Thi": 4, "Ke": 5,
+        "ZoHigh": 6, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 4, "KeHigh": 5
+      }
+    },
+    "EnharmonicVou": {
+      "intervals": [12, 12, 6, 12],
+      "defaultIntervals": [12, 12, 6],
+      "structure": "tetrachord",
+      "notes": ["Vou", "Ga", "Thi", "Ke"],
+      "scaleNoteMap": {
+        "ZoLow": 1, "NiLow": 2, "PaLow": 3, "VouLow": 0, "GaLow": 1, "ThiLow": 2, "KeLow": 3,
+        "Zo": 0, "Ni": 1, "Pa": 2, "Vou": 3, "Ga": 0, "Thi": 1, "Ke": 2,
+        "ZoHigh": 3, "NiHigh": 0, "PaHigh": 1, "VouHigh": 2, "GaHigh": 3, "ThiHigh": 0, "KeHigh": 1
+      }
+    },
+    "EnharmonicVouHigh": {
+      "intervals": [12, 12, 6],
+      "defaultIntervals": [12, 12, 6],
+      "structure": "tetrachord",
+      "notes": ["VouHigh", "GaHigh", "ThiHigh"],
+      "scaleNoteMap": {
+        "ZoLow": 1, "NiLow": 2, "PaLow": 0, "VouLow": 1, "GaLow": 2, "ThiLow": 0, "KeLow": 1,
+        "Zo": 2, "Ni": 0, "Pa": 1, "Vou": 2, "Ga": 0, "Thi": 1, "Ke": 2,
+        "ZoHigh": 0, "NiHigh": 1, "PaHigh": 2, "VouHigh": 0, "GaHigh": 1, "ThiHigh": 2, "KeHigh": 0
+      }
+    }
+  },
+  "scaleConstruction": {
+    "_description": "How compound scales are constructed from base intervals",
+    "diapason": "intervals = [...base, 12, ...base] (e.g., Diatonic, Legetos)",
+    "tetrachord": "intervals = [...base, 12] (e.g., SoftChromatic, HardChromatic, Enharmonic tetrachords)",
+    "zygos": "intervals = [...zygosBase, ...diatonicBase] (e.g., Zygos, ZygosLegetos)",
+    "kliton": "intervals = [diatonic[0], ...klitonBase, ...diatonicBase]",
+    "spathiKe": "intervals = [...diatonicBase, ...spathiBase]",
+    "spathiGa": "intervals = [diatonic[0], ...spathiBase, diatonic[1], diatonic[2]]"
+  }
+}

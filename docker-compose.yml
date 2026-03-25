@@ -1,0 +1,12 @@
+services:
+  gorgon:
+    build: .
+    container_name: gorgon
+    restart: unless-stopped
+    networks:
+      homelab:
+        ipv4_address: 172.18.0.12
+
+networks:
+  homelab:
+    external: true

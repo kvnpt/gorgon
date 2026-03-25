@@ -1,0 +1,14 @@
+{
+  "name": "gorgon",
+  "version": "0.1.0",
+  "description": "Byzantine chant notation writer",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "license": "GPL-3.0"
+}

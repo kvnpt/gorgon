@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Gorgon — Byzantine Notation Writer</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header id="header">
+    <div class="header-left">
+      <h1>Gorgon</h1>
+    </div>
+    <div class="header-right">
+      <button id="btn-new" class="header-btn" title="New score">New</button>
+      <button id="btn-export" class="header-btn" title="Export PDF">PDF</button>
+    </div>
+  </header>
+
+  <div id="toolbar">
+    <div class="toolbar-row">
+      <label for="score-title" class="toolbar-label">Title</label>
+      <input type="text" id="score-title" placeholder="Untitled" autocomplete="off">
+      <label for="score-mode" class="toolbar-label">Mode</label>
+      <select id="score-mode">
+        <option value="1">Mode 1 (Protos)</option>
+        <option value="2">Mode 2 (Devteros)</option>
+        <option value="3">Mode 3 (Tritos)</option>
+        <option value="4">Mode 4 (Tetartos)</option>
+        <option value="5">Pl. Mode 1 (Plagios Protos)</option>
+        <option value="6">Pl. Mode 2 (Plagios Devteros)</option>
+        <option value="7">Grave (Varys)</option>
+        <option value="8">Pl. Mode 4 (Plagios Tetartos)</option>
+      </select>
+    </div>
+  </div>
+
+  <main id="score-area">
+    <div id="score" class="score">
+      <!-- Rendered score elements appear here -->
+    </div>
+  </main>
+
+  <div id="palette">
+    <div class="palette-tabs">
+      <button class="palette-tab active" data-category="quantity">Quantity</button>
+      <button class="palette-tab" data-category="quality">Quality</button>
+      <button class="palette-tab" data-category="temporal">Temporal</button>
+      <button class="palette-tab" data-category="martyria">Martyria</button>
+      <button class="palette-tab" data-category="fthores">Fthores</button>
+      <button class="palette-tab" data-category="other">Other</button>
+    </div>
+    <div id="palette-grid" class="palette-grid">
+      <!-- Neume buttons rendered by JS -->
+    </div>
+    <div class="palette-actions">
+      <button id="btn-lyric" class="action-btn">Lyric</button>
+      <button id="btn-space" class="action-btn">Space</button>
+      <button id="btn-barline" class="action-btn">Bar</button>
+      <button id="btn-martyria" class="action-btn">Mart.</button>
+      <button id="btn-newline" class="action-btn">Line</button>
+      <button id="btn-delete" class="action-btn danger">Del</button>
+      <button id="btn-undo" class="action-btn">Undo</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
