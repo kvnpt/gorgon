@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Gorgon — Byzantine Notation Writer</title>
   <link rel="stylesheet" href="app.css">
 </head>
@@ -41,8 +41,9 @@
     </div>
   </main>
 
-  <div id="palette">
-    <div class="palette-tabs">
+  <div id="palette" hidden>
+    <div class="palette-tabs-wrap">
+    <div class="palette-tabs" id="palette-tabs">
       <button class="palette-tab active" data-category="quantity">Quantity</button>
       <button class="palette-tab" data-category="quality">Quality</button>
       <button class="palette-tab" data-category="temporal">Temporal</button>
@@ -50,17 +51,35 @@
       <button class="palette-tab" data-category="fthores">Fthores</button>
       <button class="palette-tab" data-category="other">Other</button>
     </div>
+    </div>
     <div id="palette-grid" class="palette-grid">
       <!-- Neume buttons rendered by JS -->
     </div>
     <div class="palette-actions">
-      <button id="btn-lyric" class="action-btn">Lyric</button>
-      <button id="btn-space" class="action-btn">Space</button>
-      <button id="btn-barline" class="action-btn">Bar</button>
-      <button id="btn-martyria" class="action-btn">Mart.</button>
-      <button id="btn-newline" class="action-btn">Line</button>
-      <button id="btn-delete" class="action-btn danger">Del</button>
+      <div class="action-row">
+        <button id="btn-space" class="action-btn">Space</button>
+        <button id="btn-barline" class="action-btn">Bar</button>
+        <button id="btn-martyria" class="action-btn">Mart.</button>
+        <button id="btn-newline" class="action-btn">Line</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compose pad: the one-handed editing surface (thumb zone) -->
+  <div id="compose">
+    <div id="pad" class="pad" aria-label="Compose pad: swipe up or down to set the note, right to commit, left to go back, tap to repeat">
+      <div class="pad-glyph" id="pad-glyph"></div>
+      <div class="pad-info">
+        <span class="pad-value" id="pad-value"></span>
+        <span class="pad-note" id="pad-note"></span>
+      </div>
+      <div class="pad-hint" id="pad-hint"></div>
+    </div>
+    <div class="action-row compose-actions">
       <button id="btn-undo" class="action-btn">Undo</button>
+      <button id="btn-delete" class="action-btn danger">Del</button>
+      <button id="btn-lyric" class="action-btn">Lyric</button>
+      <button id="btn-palette" class="action-btn" aria-expanded="false">Signs</button>
     </div>
   </div>
 

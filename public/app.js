@@ -5,6 +5,7 @@ import { createScore, createNote, createMartyria, createModeKey,
          createBarline, createSectionBreak, createSpacer,
          SBMUFL_TO_NEUME, NEUME_TO_SBMUFL } from './models.js';
 import { analyzeScore } from './analysis.js';
+import { attachPad } from './gestures.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -55,19 +56,20 @@ let selectedIdx = -1;
 let editingLyricIdx = -1;
 let analysisResult = [];
 let history = [];
-const MAX_HISTORY = 50;
+const MAX_HISTORY = 200;
 
+// Each snapshot keeps the focus too, so Undo puts you back where you were
 function pushHistory() {
-  history.push(JSON.stringify(score));
+  history.push(JSON.stringify({ score, selectedIdx, cursorPos }));
   if (history.length > MAX_HISTORY) history.shift();
 }
 
 function undo() {
   if (history.length === 0) return;
-  const restored = JSON.parse(history.pop());
-  score = restored;
-  cursorPos = Math.min(cursorPos, score.elements.length);
-  selectedIdx = -1;
+  const snap = JSON.parse(history.pop());
+  score = snap.score;
+  cursorPos = Math.min(snap.cursorPos, score.elements.length);
+  selectedIdx = snap.selectedIdx < score.elements.length ? snap.selectedIdx : -1;
   editingLyricIdx = -1;
   reanalyze();
   render();
@@ -148,7 +150,7 @@ function renderPalette() {
 
   grid.innerHTML = glyphs.map(g => {
     const char = codepointToChar(g.codepoint);
-    const label = g.name.replace(/([A-Z])/g, ' $1').trim();
+    const label = glyphLabel(g.name);
 
     // Check if this neume is valid in current context (for fthores category)
     let invalid = false;
@@ -172,6 +174,13 @@ function renderPalette() {
   }).join('');
 }
 
+// Readable palette label: split camelCase into words, e.g.
+// 'oligonKentimaYpsiliRight' -> 'Oligon kentima ypsili right'.
+function glyphLabel(name) {
+  const words = name.replace(/([a-z])([A-Z0-9])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 // Map SBMuFL fthora glyph names to theory fthora types
 function getFthoraType(glyphName) {
   const n = glyphName.toLowerCase();
@@ -187,12 +196,26 @@ function getFthoraType(glyphName) {
   return null;
 }
 
+// Show fade edges on the tab row when there are more tabs off-screen.
+function updateTabScrollCue() {
+  const row = document.getElementById('palette-tabs');
+  const wrap = row.parentElement;
+  const max = row.scrollWidth - row.clientWidth;
+  wrap.classList.toggle('more-left', row.scrollLeft > 2);
+  wrap.classList.toggle('more-right', row.scrollLeft < max - 2);
+}
+
 function initPaletteTabs() {
   const tabs = document.querySelectorAll('.palette-tab');
+  const row = document.getElementById('palette-tabs');
+  row.addEventListener('scroll', updateTabScrollCue, { passive: true });
+  window.addEventListener('resize', updateTabScrollCue);
+  updateTabScrollCue();
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
       currentCategory = tab.dataset.category;
       renderPalette();
     });
@@ -373,6 +396,7 @@ function render() {
 
   // Update palette validity indicators
   renderPalette();
+  renderPad();
 }
 
 function noteColHtml(el, idx, analysis) {
@@ -388,7 +412,8 @@ function noteColHtml(el, idx, analysis) {
 
   let lyricHtml;
   if (editingLyricIdx === idx) {
-    lyricHtml = `<input class="lyric-input" data-idx="${idx}" value="${esc(el.lyric)}" autocomplete="off" autocapitalize="off">`;
+    const width = Math.max(3, (el.lyric || '').length + 1);
+    lyricHtml = `<input class="lyric-input" data-idx="${idx}" value="${esc(el.lyric)}" style="width:${width}ch" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">`;
   } else {
     lyricHtml = `<span class="lyric">${esc(el.lyric) || '&nbsp;'}</span>`;
   }
@@ -444,7 +469,14 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.note-col').forEach(col => {
     col.addEventListener('click', (e) => {
       if (e.target.classList.contains('lyric-input')) return;
+      e.stopPropagation();
       const idx = parseInt(col.dataset.idx);
+      // Tapping the syllable line of a note goes straight to lyric editing
+      const tappedLyric = e.target.classList.contains('lyric');
+      if (tappedLyric && score.elements[idx]?.type === 'note') {
+        startLyricEdit(idx);
+        return;
+      }
       if (selectedIdx === idx) {
         if (score.elements[idx]?.type === 'note') {
           editingLyricIdx = idx;
@@ -460,7 +492,8 @@ function bindScoreEvents() {
   });
 
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
-    ip.addEventListener('click', () => {
+    ip.addEventListener('click', (e) => {
+      e.stopPropagation();
       cursorPos = parseInt(ip.dataset.insert);
       selectedIdx = -1;
       editingLyricIdx = -1;
@@ -468,17 +501,31 @@ function bindScoreEvents() {
     });
   });
 
+  // Tapping empty space in the score (e.g. after the last line) puts the
+  // cursor at the end, so you never have to hit the thin insert point.
+  const content = scoreEl.querySelector('.score-content');
+  content.addEventListener('click', (e) => {
+    if (e.target !== content) return;
+    cursorPos = score.elements.length;
+    selectedIdx = -1;
+    editingLyricIdx = -1;
+    render();
+  });
+
   scoreEl.querySelectorAll('.lyric-input').forEach(input => {
     const idx = parseInt(input.dataset.idx);
+    let edited = false;
 
     input.addEventListener('input', () => {
+      // Snapshot once per edit, before the change, so Undo restores the old lyric
+      if (!edited) { pushHistory(); edited = true; }
       score.elements[idx].lyric = input.value;
+      input.style.width = Math.max(3, input.value.length + 1) + 'ch';
     });
 
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        pushHistory();
         let nextIdx = idx + 1;
         while (nextIdx < score.elements.length && score.elements[nextIdx].type !== 'note') {
           nextIdx++;
@@ -506,6 +553,53 @@ function bindScoreEvents() {
       }, 150);
     });
   });
+}
+
+function startLyricEdit(idx) {
+  selectedIdx = idx;
+  cursorPos = idx + 1;
+  editingLyricIdx = idx;
+  render();
+}
+
+// Cursor movement shared by the arrow keys and the Prev/Next buttons
+function moveLeft() {
+  if (selectedIdx > 0) {
+    selectedIdx--;
+    cursorPos = selectedIdx + 1;
+  } else if (selectedIdx < 0 && cursorPos > 0) {
+    cursorPos--;
+    selectedIdx = cursorPos;
+  } else if (selectedIdx === 0) {
+    // From the first element, step to the insert point before it
+    selectedIdx = -1;
+    cursorPos = 0;
+  }
+  editingLyricIdx = -1;
+  render();
+  scrollSelectionIntoView();
+}
+
+function moveRight() {
+  if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
+    selectedIdx++;
+    cursorPos = selectedIdx + 1;
+  } else if (selectedIdx >= 0) {
+    // From the last element, step to the insert point at the end
+    selectedIdx = -1;
+    cursorPos = score.elements.length;
+  } else if (cursorPos < score.elements.length) {
+    selectedIdx = cursorPos;
+    cursorPos++;
+  }
+  editingLyricIdx = -1;
+  render();
+  scrollSelectionIntoView();
+}
+
+function scrollSelectionIntoView() {
+  const target = document.querySelector('.note-col.selected, .insert-point.active');
+  target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 // ============================================================================
@@ -549,9 +643,18 @@ function initToolbar() {
 
   document.getElementById('btn-lyric').addEventListener('click', () => {
     if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
-      editingLyricIdx = selectedIdx;
-      render();
+      startLyricEdit(selectedIdx);
+    } else if (cursorPos > 0 && score.elements[cursorPos - 1]?.type === 'note') {
+      startLyricEdit(cursorPos - 1);
     }
+  });
+
+  document.getElementById('btn-palette').addEventListener('click', (e) => {
+    const palette = document.getElementById('palette');
+    palette.hidden = !palette.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!palette.hidden));
+    e.currentTarget.classList.toggle('active', !palette.hidden);
+    if (!palette.hidden) updateTabScrollCue();
   });
 
   document.getElementById('btn-space').addEventListener('click', () => {
@@ -607,6 +710,191 @@ function initToolbar() {
 }
 
 // ============================================================================
+// COMPOSE PAD (one-handed swipe editing)
+// ============================================================================
+//
+// Focus is either a symbol (selectedIdx >= 0) or an empty slot at cursorPos
+// (selectedIdx < 0). Notes are only ever inserted on an empty slot.
+//   Empty slot: swipe up/down inserts Ison, each further step climbs or
+//               descends the ladder; tap inserts a repeat of the previous note.
+//   Symbol:     swipe up/down steps its value one rung per detent.
+//   Swipe right commits the symbol and moves focus on (to the next symbol,
+//   or to an empty slot after the last one). Swipe left moves focus back.
+
+const MIN_VALUE = -12;
+const MAX_VALUE = 14;
+
+function intervalOf(el) {
+  return theory.neumeValues?.neumeValues?.[el.quantitativeNeume] ?? 0;
+}
+
+// The default neume for an interval, preferring the current family
+// (e.g. stepping a Petasti stays in the Petasti family when it can).
+function neumeForValue(value, family) {
+  const table = theory.neumeValues?.neumeValues || {};
+  let first = null;
+  for (const [name, v] of Object.entries(table)) {
+    if (v !== value || !NEUME_TO_SBMUFL[name]) continue;
+    if (family && value > 0 && name.startsWith(family)) return name;
+    if (!first) first = name;
+  }
+  return first || 'Ison';
+}
+
+function familyOf(el) {
+  return el?.quantitativeNeume?.startsWith('Petasti') ? 'Petasti' : null;
+}
+
+function setNoteValue(el, value, family) {
+  el.quantitativeNeume = neumeForValue(value, family);
+  delete el._glyph;       // render from the Neanes name, not a cached glyph
+  delete el._codepoint;
+}
+
+function previousNote(beforeIdx) {
+  for (let i = beforeIdx - 1; i >= 0; i--) {
+    if (score.elements[i].type === 'note') return score.elements[i];
+  }
+  return null;
+}
+
+function focusSymbol(idx) {
+  selectedIdx = idx;
+  cursorPos = idx + 1;
+  editingLyricIdx = -1;
+}
+
+function focusEmptySlot(pos) {
+  selectedIdx = -1;
+  cursorPos = pos;
+  editingLyricIdx = -1;
+}
+
+function haptic() {
+  try { navigator.vibrate?.(8); } catch (e) { /* unsupported */ }
+}
+
+function refresh() {
+  reanalyze();
+  render();
+  scrollSelectionIntoView();
+}
+
+// State held for the duration of one vertical drag
+let drag = null;
+
+function initComposePad() {
+  const pad = document.getElementById('pad');
+  attachPad(pad, {
+    onTap() {
+      if (selectedIdx >= 0) return;            // already on a symbol
+      const prev = previousNote(cursorPos);
+      pushHistory();
+      const el = createNote(prev ? prev.quantitativeNeume : 'Ison');
+      score.elements.splice(cursorPos, 0, el);
+      focusSymbol(cursorPos);
+      haptic();
+      refresh();
+    },
+
+    onDragStart() {
+      const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+      if (el && el.type !== 'note') { drag = null; return; }
+      pushHistory();
+      drag = el
+        ? { mode: 'symbol', idx: selectedIdx, base: intervalOf(el), family: familyOf(el) }
+        : { mode: 'empty', pos: cursorPos, idx: -1 };
+    },
+
+    onStep(steps) {
+      if (!drag) return;
+      if (drag.mode === 'symbol') {
+        const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, drag.base + steps));
+        setNoteValue(score.elements[drag.idx], value, drag.family);
+      } else {
+        // Empty slot: the first step gives Ison, then one rung per step
+        if (steps === 0) {
+          if (drag.idx >= 0) {
+            score.elements.splice(drag.idx, 1);
+            drag.idx = -1;
+            focusEmptySlot(drag.pos);
+          }
+        } else {
+          const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, Math.sign(steps) * (Math.abs(steps) - 1)));
+          if (drag.idx < 0) {
+            score.elements.splice(drag.pos, 0, createNote('Ison'));
+            drag.idx = drag.pos;
+            focusSymbol(drag.idx);
+          }
+          setNoteValue(score.elements[drag.idx], value, null);
+        }
+      }
+      haptic();
+      refresh();
+    },
+
+    onDragEnd(steps) {
+      // A drag that came back to where it started changed nothing
+      if (drag && steps === 0) history.pop();
+      drag = null;
+    },
+
+    onSwipe(dir) {
+      if (dir === 'right') {
+        if (selectedIdx < 0) {
+          // Empty slot: nothing to commit, but step onto the next symbol if any
+          if (cursorPos < score.elements.length) focusSymbol(cursorPos);
+          else return;
+        } else if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
+        else focusEmptySlot(score.elements.length);
+      } else {
+        if (selectedIdx > 0) focusSymbol(selectedIdx - 1);
+        else if (selectedIdx < 0 && cursorPos > 0) focusSymbol(cursorPos - 1);
+        else return;
+      }
+      haptic();
+      render();
+      scrollSelectionIntoView();
+    },
+  });
+}
+
+function renderPad() {
+  const glyphEl = document.getElementById('pad-glyph');
+  const valueEl = document.getElementById('pad-value');
+  const noteEl = document.getElementById('pad-note');
+  const hintEl = document.getElementById('pad-hint');
+  const pad = document.getElementById('pad');
+  const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+
+  if (el && el.type === 'note') {
+    const v = intervalOf(el);
+    const a = analysisResult[selectedIdx];
+    pad.classList.remove('empty');
+    glyphEl.textContent = getNeumeChar(el);
+    valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `\u2212${-v}` : '0';
+    noteEl.textContent = a?.noteName || '';
+    noteEl.classList.toggle('warn', a?.warnings?.length > 0);
+    hintEl.textContent = 'Swipe \u2195 to change \u00b7 \u2192 to commit';
+  } else if (el) {
+    pad.classList.remove('empty');
+    glyphEl.textContent = '';
+    valueEl.textContent = el.type;
+    noteEl.textContent = '';
+    hintEl.textContent = '\u2192 next \u00b7 \u2190 back';
+  } else {
+    pad.classList.add('empty');
+    glyphEl.textContent = '';
+    valueEl.textContent = '';
+    noteEl.textContent = '';
+    const prev = previousNote(cursorPos);
+    hintEl.textContent = prev
+      ? 'Swipe \u2195 for a new note \u00b7 Tap to repeat'
+      : 'Swipe up or down to start with Ison';
+  }
+}
+
+// ============================================================================
 // KEYBOARD
 // ============================================================================
 
@@ -616,24 +904,10 @@ function initKeyboard() {
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (selectedIdx > 0) {
-        selectedIdx--;
-        cursorPos = selectedIdx + 1;
-      } else if (selectedIdx < 0 && cursorPos > 0) {
-        cursorPos--;
-        selectedIdx = cursorPos;
-      }
-      render();
+      moveLeft();
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
-        selectedIdx++;
-        cursorPos = selectedIdx + 1;
-      } else if (selectedIdx < 0 && cursorPos < score.elements.length) {
-        selectedIdx = cursorPos;
-        cursorPos++;
-      }
-      render();
+      moveRight();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       document.getElementById('btn-delete').click();
@@ -684,6 +958,9 @@ async function init() {
   initPaletteGrid();
   initToolbar();
   initKeyboard();
+  initComposePad();
+  // Open on the empty slot at the end of the score
+  focusEmptySlot(score.elements.length);
   reanalyze();
   render();
 }
