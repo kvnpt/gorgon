@@ -676,7 +676,39 @@ setInterval(saveToLocal, 5000);
 // INIT
 // ============================================================================
 
+// Keep the app shell inside the visible area on mobile browsers.
+// dvh handles Safari's collapsing toolbars, but iOS does not shrink the layout
+// viewport for the on-screen keyboard; it overlays it and scrolls the page.
+// visualViewport tells us the real visible box, so size (and when the keyboard
+// is up, pin) the body to it.
+function initViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  let raf = 0;
+
+  const update = () => {
+    raf = 0;
+    // Pinch-zoomed: visualViewport is the zoomed box, leave layout alone.
+    if (vv.scale > 1.01) return;
+    const layoutH = root.clientHeight;
+    const keyboardOpen = layoutH - vv.height > 100;
+    root.style.setProperty('--app-height', `${Math.round(vv.height)}px`);
+    root.style.setProperty('--app-top', `${Math.round(vv.offsetTop)}px`);
+    document.body.classList.toggle('keyboard-open', keyboardOpen);
+    document.body.classList.toggle('vv-pinned', keyboardOpen);
+    if (!keyboardOpen && window.scrollY !== 0) window.scrollTo(0, 0);
+  };
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+
+  vv.addEventListener('resize', schedule);
+  vv.addEventListener('scroll', schedule);
+  window.addEventListener('orientationchange', schedule);
+  update();
+}
+
 async function init() {
+  initViewport();
   await loadData();
   loadFromLocal();
   initPaletteTabs();
