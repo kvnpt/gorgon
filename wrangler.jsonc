@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gorgon",
+  "account_id": "4d12d8f22e464b55b92bbf4aded41aa1",
   "main": "worker.js",
   "compatibility_date": "2026-10-01",
   "assets": {
