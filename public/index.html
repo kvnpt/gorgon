@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Gorgon — Byzantine Notation Writer</title>
   <link rel="stylesheet" href="app.css">
 </head>
@@ -42,7 +42,8 @@
   </main>
 
   <div id="palette">
-    <div class="palette-tabs">
+    <div class="palette-tabs-wrap">
+    <div class="palette-tabs" id="palette-tabs">
       <button class="palette-tab active" data-category="quantity">Quantity</button>
       <button class="palette-tab" data-category="quality">Quality</button>
       <button class="palette-tab" data-category="temporal">Temporal</button>
@@ -50,17 +51,24 @@
       <button class="palette-tab" data-category="fthores">Fthores</button>
       <button class="palette-tab" data-category="other">Other</button>
     </div>
+    </div>
     <div id="palette-grid" class="palette-grid">
       <!-- Neume buttons rendered by JS -->
     </div>
     <div class="palette-actions">
-      <button id="btn-lyric" class="action-btn">Lyric</button>
-      <button id="btn-space" class="action-btn">Space</button>
-      <button id="btn-barline" class="action-btn">Bar</button>
-      <button id="btn-martyria" class="action-btn">Mart.</button>
-      <button id="btn-newline" class="action-btn">Line</button>
-      <button id="btn-delete" class="action-btn danger">Del</button>
-      <button id="btn-undo" class="action-btn">Undo</button>
+      <div class="action-row">
+        <button id="btn-prev" class="action-btn" aria-label="Move cursor left">&#9664; Prev</button>
+        <button id="btn-next" class="action-btn" aria-label="Move cursor right">Next &#9654;</button>
+        <button id="btn-undo" class="action-btn">Undo</button>
+        <button id="btn-delete" class="action-btn danger">Del</button>
+      </div>
+      <div class="action-row">
+        <button id="btn-lyric" class="action-btn">Lyric</button>
+        <button id="btn-space" class="action-btn">Space</button>
+        <button id="btn-barline" class="action-btn">Bar</button>
+        <button id="btn-martyria" class="action-btn">Mart.</button>
+        <button id="btn-newline" class="action-btn">Line</button>
+      </div>
     </div>
   </div>
 

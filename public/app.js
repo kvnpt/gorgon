@@ -148,7 +148,7 @@ function renderPalette() {
 
   grid.innerHTML = glyphs.map(g => {
     const char = codepointToChar(g.codepoint);
-    const label = g.name.replace(/([A-Z])/g, ' $1').trim();
+    const label = glyphLabel(g.name);
 
     // Check if this neume is valid in current context (for fthores category)
     let invalid = false;
@@ -172,6 +172,13 @@ function renderPalette() {
   }).join('');
 }
 
+// Readable palette label: split camelCase into words, e.g.
+// 'oligonKentimaYpsiliRight' -> 'Oligon kentima ypsili right'.
+function glyphLabel(name) {
+  const words = name.replace(/([a-z])([A-Z0-9])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 // Map SBMuFL fthora glyph names to theory fthora types
 function getFthoraType(glyphName) {
   const n = glyphName.toLowerCase();
@@ -187,12 +194,26 @@ function getFthoraType(glyphName) {
   return null;
 }
 
+// Show fade edges on the tab row when there are more tabs off-screen.
+function updateTabScrollCue() {
+  const row = document.getElementById('palette-tabs');
+  const wrap = row.parentElement;
+  const max = row.scrollWidth - row.clientWidth;
+  wrap.classList.toggle('more-left', row.scrollLeft > 2);
+  wrap.classList.toggle('more-right', row.scrollLeft < max - 2);
+}
+
 function initPaletteTabs() {
   const tabs = document.querySelectorAll('.palette-tab');
+  const row = document.getElementById('palette-tabs');
+  row.addEventListener('scroll', updateTabScrollCue, { passive: true });
+  window.addEventListener('resize', updateTabScrollCue);
+  updateTabScrollCue();
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
       currentCategory = tab.dataset.category;
       renderPalette();
     });
@@ -388,7 +409,8 @@ function noteColHtml(el, idx, analysis) {
 
   let lyricHtml;
   if (editingLyricIdx === idx) {
-    lyricHtml = `<input class="lyric-input" data-idx="${idx}" value="${esc(el.lyric)}" autocomplete="off" autocapitalize="off">`;
+    const width = Math.max(3, (el.lyric || '').length + 1);
+    lyricHtml = `<input class="lyric-input" data-idx="${idx}" value="${esc(el.lyric)}" style="width:${width}ch" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">`;
   } else {
     lyricHtml = `<span class="lyric">${esc(el.lyric) || '&nbsp;'}</span>`;
   }
@@ -444,7 +466,14 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.note-col').forEach(col => {
     col.addEventListener('click', (e) => {
       if (e.target.classList.contains('lyric-input')) return;
+      e.stopPropagation();
       const idx = parseInt(col.dataset.idx);
+      // Tapping the syllable line of a note goes straight to lyric editing
+      const tappedLyric = e.target.classList.contains('lyric');
+      if (tappedLyric && score.elements[idx]?.type === 'note') {
+        startLyricEdit(idx);
+        return;
+      }
       if (selectedIdx === idx) {
         if (score.elements[idx]?.type === 'note') {
           editingLyricIdx = idx;
@@ -460,7 +489,8 @@ function bindScoreEvents() {
   });
 
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
-    ip.addEventListener('click', () => {
+    ip.addEventListener('click', (e) => {
+      e.stopPropagation();
       cursorPos = parseInt(ip.dataset.insert);
       selectedIdx = -1;
       editingLyricIdx = -1;
@@ -468,17 +498,31 @@ function bindScoreEvents() {
     });
   });
 
+  // Tapping empty space in the score (e.g. after the last line) puts the
+  // cursor at the end, so you never have to hit the thin insert point.
+  const content = scoreEl.querySelector('.score-content');
+  content.addEventListener('click', (e) => {
+    if (e.target !== content) return;
+    cursorPos = score.elements.length;
+    selectedIdx = -1;
+    editingLyricIdx = -1;
+    render();
+  });
+
   scoreEl.querySelectorAll('.lyric-input').forEach(input => {
     const idx = parseInt(input.dataset.idx);
+    let edited = false;
 
     input.addEventListener('input', () => {
+      // Snapshot once per edit, before the change, so Undo restores the old lyric
+      if (!edited) { pushHistory(); edited = true; }
       score.elements[idx].lyric = input.value;
+      input.style.width = Math.max(3, input.value.length + 1) + 'ch';
     });
 
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        pushHistory();
         let nextIdx = idx + 1;
         while (nextIdx < score.elements.length && score.elements[nextIdx].type !== 'note') {
           nextIdx++;
@@ -506,6 +550,53 @@ function bindScoreEvents() {
       }, 150);
     });
   });
+}
+
+function startLyricEdit(idx) {
+  selectedIdx = idx;
+  cursorPos = idx + 1;
+  editingLyricIdx = idx;
+  render();
+}
+
+// Cursor movement shared by the arrow keys and the Prev/Next buttons
+function moveLeft() {
+  if (selectedIdx > 0) {
+    selectedIdx--;
+    cursorPos = selectedIdx + 1;
+  } else if (selectedIdx < 0 && cursorPos > 0) {
+    cursorPos--;
+    selectedIdx = cursorPos;
+  } else if (selectedIdx === 0) {
+    // From the first element, step to the insert point before it
+    selectedIdx = -1;
+    cursorPos = 0;
+  }
+  editingLyricIdx = -1;
+  render();
+  scrollSelectionIntoView();
+}
+
+function moveRight() {
+  if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
+    selectedIdx++;
+    cursorPos = selectedIdx + 1;
+  } else if (selectedIdx >= 0) {
+    // From the last element, step to the insert point at the end
+    selectedIdx = -1;
+    cursorPos = score.elements.length;
+  } else if (cursorPos < score.elements.length) {
+    selectedIdx = cursorPos;
+    cursorPos++;
+  }
+  editingLyricIdx = -1;
+  render();
+  scrollSelectionIntoView();
+}
+
+function scrollSelectionIntoView() {
+  const target = document.querySelector('.note-col.selected, .insert-point.active');
+  target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 // ============================================================================
@@ -549,10 +640,14 @@ function initToolbar() {
 
   document.getElementById('btn-lyric').addEventListener('click', () => {
     if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
-      editingLyricIdx = selectedIdx;
-      render();
+      startLyricEdit(selectedIdx);
+    } else if (cursorPos > 0 && score.elements[cursorPos - 1]?.type === 'note') {
+      startLyricEdit(cursorPos - 1);
     }
   });
+
+  document.getElementById('btn-prev').addEventListener('click', moveLeft);
+  document.getElementById('btn-next').addEventListener('click', moveRight);
 
   document.getElementById('btn-space').addEventListener('click', () => {
     pushHistory();
@@ -616,24 +711,10 @@ function initKeyboard() {
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (selectedIdx > 0) {
-        selectedIdx--;
-        cursorPos = selectedIdx + 1;
-      } else if (selectedIdx < 0 && cursorPos > 0) {
-        cursorPos--;
-        selectedIdx = cursorPos;
-      }
-      render();
+      moveLeft();
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
-        selectedIdx++;
-        cursorPos = selectedIdx + 1;
-      } else if (selectedIdx < 0 && cursorPos < score.elements.length) {
-        selectedIdx = cursorPos;
-        cursorPos++;
-      }
-      render();
+      moveRight();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       document.getElementById('btn-delete').click();
