@@ -8,7 +8,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 - Express server (serves static + SBMuFL API)
 - Neanes font (WOFF2, GPL-3.0, SBMuFL PUA-mapped glyphs)
 - 375 glyphs from SBMuFL spec (`data/sbmufl/`)
-- Cloudflare Worker with static assets (`worker.js` + `wrangler.jsonc`): `public/` served as assets, `/api/*` and `/health` from bundled `data/` JSON. Deploy: `npm run cf:deploy`
+- Cloudflare Worker with static assets (`worker.js` + `wrangler.jsonc`): `public/` served as assets, `/api/*` and `/health` from bundled `data/` JSON. Deploys automatically on push to `main` (`.github/workflows/deploy.yml`, needs repo secret `CLOUDFLARE_API_TOKEN`); manual: `npm run cf:deploy`
 - Legacy: Docker on hades (`server.js`), Caddy reverse proxy. Keep `server.js` and `worker.js` API routes in sync
 
 ## Key Files
