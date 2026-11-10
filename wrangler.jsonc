@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gorgon",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/health"]
+  },
+  "workers_dev": true
+  // Custom domain (attach once the token/dashboard allows it):
+  // "routes": [{ "pattern": "gorgon.orthodoxy.au", "custom_domain": true }]
+}
