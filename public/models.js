@@ -27,10 +27,17 @@
  * @param {number|null} [options.templateId=null] - Mode key template ID
  * @returns {Object} Score document
  */
+// A score's own id: how the account tells one score from another
+function newId() {
+  if (crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function createScore(options = {}) {
   return {
     version: '2.0',
     metadata: {
+      id: newId(),
       title: options.title || '',
       composer: options.composer || '',
       tone: options.tone || '',

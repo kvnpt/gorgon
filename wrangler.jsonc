@@ -7,9 +7,22 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/health"]
+    "run_worker_first": ["/api/*", "/health", "/admin"]
   },
   "workers_dev": true,
+  // Saved documents for signed-in people (lib/documents.js). No database_id:
+  // `wrangler deploy` finds the database named "gorgon", or creates it on the
+  // first deploy (the CI token has D1 Write). Add the id here once it exists.
+  "d1_databases": [{ "binding": "DB", "database_name": "gorgon" }],
+  // Cloudflare Access (lib/access.js). Identifiers, not secrets. Gorgon shares
+  // agora's Access application ("orthodoxy.au"), whose paths already include
+  // /admin and /api/admin/* on every *.orthodoxy.au host: one login for every
+  // tool on the domain. ACCESS_AUD is that application's audience tag.
+  // Empty means sign-in is off and the page hides its Sign in button.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "agora-admin.cloudflareaccess.com",
+    "ACCESS_AUD": "5883ff2f0686bcecf838dc59faaa9749c1ff83bb49c29cd40d27dd1bf5b890fd"
+  },
   // A zone route, not a custom domain: gorgon.orthodoxy.au already has a
   // proxied DNS record, and this more specific pattern takes precedence over
   // the agora Worker's *.orthodoxy.au/* route.
