@@ -841,10 +841,8 @@ body.keyboard-open #compose { display: none; }
 .pad-note.warn { color: var(--warn); }
 
 .pad-hint {
-  position: absolute;
-  top: 0.6rem;
-  left: 0;
-  right: 0;
+  /* in the pad's centre column, clear of the corner toggles */
+  padding: 0 5rem;
   text-align: center;
   font-size: 12px;
   font-weight: 500;
@@ -853,7 +851,6 @@ body.keyboard-open #compose { display: none; }
 }
 
 .pad.empty .pad-hint {
-  position: static;
   font-size: 15px;
   color: var(--text2);
 }
@@ -967,3 +964,44 @@ body.keyboard-open #compose { display: none; }
 @media print {
   .note-col.placeholder { display: none; }
 }
+
+/* Corner toggles: Quant. top-left, Qual. top-right, Mart. bottom-left */
+.pad-mode-tl { top: 0.6rem; bottom: auto; }
+.pad-mode-tr { top: 0.6rem; bottom: auto; left: auto; right: 0.6rem; }
+
+/* Quantity and quality fill with the text colour when on (agora pills);
+   martyria stays red, the martyria colour */
+.pad-mode-tl.active,
+.pad-mode-tr.active {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.pad.quality-mode {
+  box-shadow: inset 0 0 0 2px var(--text);
+}
+
+/* The note on the pad with its signs: above / neume (+ quality) / below */
+.pad-glyph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pad-glyph .neume-support,
+.pad-glyph .neume-support-below {
+  font-size: 0.5em;
+  min-height: 0;
+}
+
+.pad-glyph .pad-neume {
+  padding-bottom: 0.3em;   /* room for quality marks that hang below */
+}
+
+/* Small pad (Signs drawer open): smaller glyph, no hint */
+#palette:not([hidden]) ~ #compose .pad-glyph { font-size: 3rem; min-height: 3rem; }
+#palette:not([hidden]) ~ #compose .pad-hint { display: none; }
+
+/* Quality marks (psifiston, omalon…) hang below the neume: leave room */
+.neume.has-quality { padding-bottom: 0.45em; }

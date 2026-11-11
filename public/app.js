@@ -428,7 +428,7 @@ function getSupportGlyphs(el) {
 
   addGlyph(el.timeNeume);
   addGlyph(el.gorgonNeume);
-  addGlyph(el.vocalExpression);
+  // vocalExpression is drawn inline with the neume (see neumeRun)
   addGlyph(el.fthora);
   addGlyph(el.accidental);
 
@@ -506,8 +506,27 @@ function render() {
   renderPad();
 }
 
+// The neume with its quality sign in one run of text. Vareia has its own
+// width and stands before the note; the other quality signs are zero-width
+// marks the font hangs under the glyph before them.
+function neumeRun(el) {
+  const base = getNeumeChar(el);
+  const q = el.vocalExpression;
+  if (!q || !glyphnames[q]) return base;
+  const qc = codepointToChar(glyphnames[q].codepoint);
+  return q === 'vareia' ? qc + base : base + qc;
+}
+
+// Neume with all its signs, for the pad (above / run / below)
+function noteGlyphHtml(el) {
+  const { above, below } = getSupportGlyphs(el);
+  return `<span class="neume-support">${above}</span>`
+    + `<span class="pad-neume">${neumeRun(el)}</span>`
+    + `<span class="neume-support-below">${below}</span>`;
+}
+
 function noteColHtml(el, idx, analysis) {
-  const char = getNeumeChar(el);
+  const char = neumeRun(el);
   const isSelected = idx === selectedIdx;
   const hasWarning = analysis?.warnings?.length > 0;
   const pending = el === placeholderEl ? ' placeholder' : '';
@@ -528,7 +547,7 @@ function noteColHtml(el, idx, analysis) {
 
   return `<div class="${cls}" data-idx="${idx}">
     ${aboveHtml}
-    <span class="neume">${char}</span>
+    <span class="neume${el.vocalExpression && el.vocalExpression !== 'vareia' ? ' has-quality' : ''}">${char}</span>
     ${belowHtml}
     ${lyricHtml}
   </div>`;
@@ -832,8 +851,52 @@ function initToolbar() {
 const MIN_VALUE = -12;
 const MAX_VALUE = 14;
 
-// Martyria mode: toggled from the pad's bottom-left button
-let martyriaMode = false;
+// What a vertical swipe edits, chosen with the pad's corner toggles:
+//   'quantity' (top-left, the default): the note's interval
+//   'quality'  (top-right): the note's quality sign (vareia, psifiston...)
+//   'martyria' (bottom-left): blank spots hold martyriae
+let padMode = 'quantity';
+const PAD_MODE_BUTTONS = { quantity: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
+
+// Quality signs in the order a swipe up offers them (none first)
+const QUALITY_SIGNS = ['psifiston', 'vareia', 'omalon', 'antikenoma', 'heteron', 'endofonon'];
+const QUALITY_NAMES = {
+  psifiston: 'Psifiston', vareia: 'Vareia', omalon: 'Omalon',
+  antikenoma: 'Antikenoma', heteron: 'Heteron', endofonon: 'Endofonon',
+};
+
+// Which quality signs a neume can carry (vocalExpressionReplacements in
+// neume-combinations.json, from Neanes)
+function qualityAllowed(sign, neume) {
+  const v = theory.neumeValues?.neumeValues?.[neume] ?? 0;
+  const kentemata = /Kentemata/.test(neume);
+  const descending = v < 0 && !/^(Petasti|Oligon)/.test(neume);
+  const oligonPlusDescending = /^Oligon/.test(neume) && v <= 0;
+  const running = ['Hyporoe', 'RunningElaphron', 'PetastiPlusRunningElaphron'].includes(neume);
+  switch (sign) {
+    case 'psifiston':
+      return !kentemata && !descending && !running;
+    case 'vareia':
+      return !(kentemata && neume !== 'OligonPlusKentemata') && !running && !oligonPlusDescending;
+    case 'omalon':
+      return !/^Petasti/.test(neume) && !kentemata && !descending && !oligonPlusDescending;
+    case 'antikenoma':
+      return !kentemata && !['IsonPlusApostrophos', 'DoubleApostrophos', 'PetastiPlusRunningElaphron',
+        'OligonPlusIson', 'OligonPlusApostrophos', 'OligonPlusElaphron', 'OligonPlusHyporoe',
+        'OligonPlusElaphronPlusApostrophos', 'OligonPlusHamili'].includes(neume);
+    case 'heteron':
+      return ['Ison', 'Oligon', 'OligonPlusApostrophos', 'OligonPlusDoubleHypsili',
+        'OligonPlusHypsiliLeft', 'OligonPlusHypsiliPlusKentimaHorizontal',
+        'OligonPlusHypsiliPlusKentimaVertical', 'OligonPlusHypsiliRight', 'OligonPlusKentima',
+        'OligonPlusKentimaAbove', 'OligonPlusKentimaBelow'].includes(neume);
+    default:
+      return true;
+  }
+}
+
+function qualityOptions(el) {
+  return [null, ...QUALITY_SIGNS.filter(q => qualityAllowed(q, el.quantitativeNeume))];
+}
 
 function intervalOf(el) {
   return theory.neumeValues?.neumeValues?.[el.quantitativeNeume] ?? 0;
@@ -951,7 +1014,7 @@ function focusEmptySlot(pos) {
 // The symbol a blank spot starts with: Ison, or in martyria mode the
 // most likely martyria
 function blankSymbol(pos) {
-  return martyriaMode ? martyriaFromOption(martyriaOptions(pos)[0]) : createNote('Ison');
+  return padMode === 'martyria' ? martyriaFromOption(martyriaOptions(pos)[0]) : createNote('Ison');
 }
 
 // Moving into a blank spot puts a pending symbol there and focuses it.
@@ -997,7 +1060,7 @@ function refresh() {
 function insertOnEmptySlot(kind) {
   pushHistory();
   let el;
-  if (martyriaMode) {
+  if (padMode === 'martyria') {
     el = martyriaFromOption(martyriaOptions(cursorPos)[0]);
   } else if (kind === 'repeat') {
     const prev = previousNote(cursorPos);
@@ -1027,14 +1090,17 @@ function commitAndAdvance() {
   return true;
 }
 
-function setMartyriaMode(on) {
-  martyriaMode = on;
-  const btn = document.getElementById('pad-mode');
-  btn.classList.toggle('active', on);
-  btn.setAttribute('aria-pressed', String(on));
+function setPadMode(mode) {
+  const wasMartyria = padMode === 'martyria';
+  padMode = mode;
+  for (const [m, id] of Object.entries(PAD_MODE_BUTTONS)) {
+    const btn = document.getElementById(id);
+    btn.classList.toggle('active', m === mode);
+    btn.setAttribute('aria-pressed', String(m === mode));
+  }
   // A pending symbol switches with the mode (Ison <-> martyria)
   const p = placeholderIndex();
-  if (p >= 0) {
+  if (p >= 0 && wasMartyria !== (mode === 'martyria')) {
     placeholderEl = null;
     score.elements.splice(p, 1);
     const el = blankSymbol(p);
@@ -1050,10 +1116,17 @@ function setMartyriaMode(on) {
 function initComposePad() {
   const pad = document.getElementById('pad');
 
-  // Bottom-left toggle on the pad; it must not start a pad gesture
-  const modeBtn = document.getElementById('pad-mode');
-  modeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  modeBtn.addEventListener('click', () => { setMartyriaMode(!martyriaMode); haptic(); });
+  // Corner toggles; they must not start a pad gesture. Tapping the mode
+  // that is on (other than quantity) turns it off again.
+  for (const [mode, id] of Object.entries(PAD_MODE_BUTTONS)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    btn.addEventListener('click', () => {
+      setPadMode(padMode === mode && mode !== 'quantity' ? 'quantity' : mode);
+      haptic();
+    });
+  }
+  setPadMode('quantity');
 
   attachPad(pad, {
     onTap() {
@@ -1070,12 +1143,25 @@ function initComposePad() {
       const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
       if (!el) {
         insertOnEmptySlot('ison');     // first swipe up or down gives Ison
+      } else if (el.type === 'note' && padMode === 'quality') {
+        const options = qualityOptions(el);
+        const i = Math.max(0, options.indexOf(el.vocalExpression || null));
+        const next = Math.max(0, Math.min(options.length - 1, i + dir));
+        if (next === i) return;
+        pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
+        el.vocalExpression = options[next];
       } else if (el.type === 'note') {
         pushHistory();
         if (el === placeholderEl) keepPlaceholder();
         const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, intervalOf(el) + dir));
         setNoteValue(el, value, familyOf(el));
-      } else if (el.type === 'martyria') {
+        // Drop a quality sign the new neume cannot carry
+        if (el.vocalExpression && QUALITY_SIGNS.includes(el.vocalExpression)
+            && !qualityAllowed(el.vocalExpression, el.quantitativeNeume)) {
+          el.vocalExpression = null;
+        }
+      } else if (el.type === 'martyria' && padMode !== 'quality') {
         const options = martyriaOptions(selectedIdx);
         const i = optionIndexOf(el, selectedIdx, options);
         const next = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + dir));
@@ -1112,14 +1198,28 @@ function renderPad() {
   const hintEl = document.getElementById('pad-hint');
   const pad = document.getElementById('pad');
   const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
-  pad.classList.toggle('martyria-mode', martyriaMode);
+  pad.classList.toggle('martyria-mode', padMode === 'martyria');
+  pad.classList.toggle('quality-mode', padMode === 'quality');
   glyphEl.classList.remove('martyria');
 
-  if (el && el.type === 'note') {
+  if (el && el.type === 'note' && padMode === 'quality') {
+    const a = analysisResult[selectedIdx];
+    const options = qualityOptions(el);
+    const i = Math.max(0, options.indexOf(el.vocalExpression || null));
+    const label = (q) => (q ? QUALITY_NAMES[q] : 'none');
+    pad.classList.remove('empty');
+    glyphEl.innerHTML = noteGlyphHtml(el);
+    valueEl.textContent = el.vocalExpression ? QUALITY_NAMES[el.vocalExpression] || el.vocalExpression : 'No quality sign';
+    noteEl.textContent = a?.noteName || '';
+    noteEl.classList.toggle('warn', a?.warnings?.length > 0);
+    const up = i < options.length - 1 ? `↑ ${label(options[i + 1])}` : '';
+    const down = i > 0 ? `↓ ${label(options[i - 1])}` : '';
+    hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
+  } else if (el && el.type === 'note') {
     const v = intervalOf(el);
     const a = analysisResult[selectedIdx];
     pad.classList.remove('empty');
-    glyphEl.textContent = getNeumeChar(el);
+    glyphEl.innerHTML = noteGlyphHtml(el);
     valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
@@ -1139,7 +1239,9 @@ function renderPad() {
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
     const up = options[i + 1] ? `↑ ${noteNameOf(options[i + 1].value)}` : '';
     const down = i > 0 ? `↓ ${noteNameOf(options[i - 1].value)}` : '';
-    hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
+    hintEl.textContent = padMode === 'quality'
+      ? 'Quality signs go on notes · Tap to commit'
+      : [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el) {
     pad.classList.remove('empty');
     glyphEl.textContent = '';
@@ -1151,7 +1253,7 @@ function renderPad() {
     glyphEl.textContent = '';
     valueEl.textContent = '';
     noteEl.textContent = '';
-    if (martyriaMode) {
+    if (padMode === 'martyria') {
       const first = martyriaOptions(cursorPos)[0];
       hintEl.textContent = `Swipe or tap for a martyria (${noteNameOf(first.value)} first)`;
     } else {
