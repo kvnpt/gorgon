@@ -6,21 +6,74 @@
   font-display: swap;
 }
 
+/*
+ * Theme: clean white UI, black hairlines, orange accent.
+ * The dark variant follows the device setting (prefers-color-scheme).
+ * Print always uses the light score colours (see @media print).
+ */
 :root {
-  --bg: #1a1a1a;
-  --surface: #242424;
-  --surface2: #2e2e2e;
-  --border: #3a3a3a;
-  --text: #e0d8cc;
-  --text2: #8888aa;
-  --accent: #e85d3a;
-  --accent2: #ff8c42;
-  --score-bg: #f5f0e8;
-  --score-text: #1a1a1a;
-  --neume-color: #000;
-  --lyric-color: #1a1a1a;
-  --cursor-color: #e85d3a;
-  --selected: rgba(232, 93, 58, 0.2);
+  color-scheme: light dark;
+  --hair: 1px;                    /* hairline width; 0.5px on retina screens */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface2: #ffffff;
+  --border: #000000;              /* black hairline */
+  --text: #000000;
+  --text2: #6b6b6b;
+  --accent: #f26a00;              /* orange */
+  --accent2: #e05e00;             /* orange for text on white */
+  --on-accent: #ffffff;
+  --accent-soft: rgba(242, 106, 0, 0.10);
+  --accent-mid: rgba(242, 106, 0, 0.30);
+  --danger: #d0021b;
+  --danger-strong: #b00016;
+  --warn: #c98a00;
+  --warn-soft: rgba(201, 138, 0, 0.12);
+  --score-bg: #ffffff;
+  --score-text: #000000;
+  --score-muted: #666666;
+  --score-faint: rgba(0, 0, 0, 0.08);
+  --score-rule: rgba(0, 0, 0, 0.15);
+  --score-tint: rgba(0, 0, 0, 0.04);
+  --neume-color: #000000;
+  --neume-red: #cc0000;           /* traditional red: supporting signs, martyriae */
+  --lyric-color: #000000;
+  --cursor-color: var(--accent);
+  --selected: rgba(242, 106, 0, 0.16);
+}
+
+@media (min-resolution: 2dppx) {
+  :root { --hair: 0.5px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #000000;
+    --surface2: #111111;
+    --border: rgba(255, 255, 255, 0.6);
+    --text: #ffffff;
+    --text2: #9a9a9a;
+    --accent: #ff7a1a;
+    --accent2: #ff8a33;
+    --on-accent: #000000;
+    --accent-soft: rgba(255, 122, 26, 0.14);
+    --accent-mid: rgba(255, 122, 26, 0.35);
+    --danger: #ff5a5f;
+    --danger-strong: #ff3b41;
+    --warn: #f5c542;
+    --warn-soft: rgba(245, 197, 66, 0.14);
+    --score-bg: #0b0b0b;
+    --score-text: #f2f2f2;
+    --score-muted: #a0a0a0;
+    --score-faint: rgba(255, 255, 255, 0.12);
+    --score-rule: rgba(255, 255, 255, 0.18);
+    --score-tint: rgba(255, 255, 255, 0.05);
+    --neume-color: #f2f2f2;
+    --neume-red: #ff5c52;
+    --lyric-color: #f2f2f2;
+    --selected: rgba(255, 122, 26, 0.22);
+  }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -75,7 +128,7 @@ body.vv-pinned {
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--hair) solid var(--border);
   flex-shrink: 0;
 }
 
@@ -91,7 +144,7 @@ body.vv-pinned {
 .header-btn {
   background: var(--surface2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   padding: 0.35rem 0.9rem;
   min-height: 44px;
   min-width: 44px;
@@ -100,7 +153,7 @@ body.vv-pinned {
   cursor: pointer;
 }
 
-.header-btn:active { background: var(--accent); color: #fff; }
+.header-btn:active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 /* Toolbar */
 #toolbar {
@@ -108,7 +161,7 @@ body.vv-pinned {
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--hair) solid var(--border);
   flex-shrink: 0;
 }
 
@@ -129,7 +182,7 @@ body.vv-pinned {
 #score-title {
   background: var(--surface2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   padding: 0.3rem 0.5rem;
   border-radius: 4px;
   font-size: 0.85rem;
@@ -140,7 +193,7 @@ body.vv-pinned {
 #score-mode {
   background: var(--surface2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   padding: 0.3rem 0.5rem;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -167,7 +220,7 @@ body.vv-pinned {
   min-height: 900px;
   padding: 2rem 1.5rem;
   border-radius: 4px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.4);
+  border: var(--hair) solid var(--border);
   position: relative;
 }
 
@@ -184,7 +237,7 @@ body.vv-pinned {
 .score-mode-label {
   text-align: center;
   font-size: 0.85rem;
-  color: #666;
+  color: var(--score-muted);
   margin-bottom: 1.5rem;
   font-family: 'Georgia', serif;
   font-style: italic;
@@ -212,7 +265,7 @@ body.vv-pinned {
 }
 
 .note-col:hover {
-  background: rgba(232, 93, 58, 0.08);
+  background: var(--accent-soft);
 }
 
 .note-col.selected {
@@ -249,7 +302,7 @@ body.vv-pinned {
   font-family: 'Neanes', sans-serif;
   font-size: 1.2rem;
   line-height: 1;
-  color: #c00;
+  color: var(--neume-red);
 }
 
 /* Supporting neume — below the base neume (apli, dipli, etc.) */
@@ -257,7 +310,7 @@ body.vv-pinned {
   font-family: 'Neanes', sans-serif;
   font-size: 1.2rem;
   line-height: 1;
-  color: #c00;
+  color: var(--neume-red);
 }
 
 /* Lyric text */
@@ -274,9 +327,9 @@ body.vv-pinned {
   font-size: 0.85rem;
   font-family: 'Georgia', serif;
   color: var(--lyric-color);
-  background: rgba(232, 93, 58, 0.1);
+  background: var(--accent-soft);
   border: none;
-  border-bottom: 1px solid var(--accent);
+  border-bottom: var(--hair) solid var(--accent);
   text-align: center;
   width: 3ch;
   min-width: 3rem;
@@ -303,7 +356,7 @@ body.vv-pinned {
 }
 
 .insert-point:hover {
-  background: rgba(232, 93, 58, 0.3);
+  background: var(--accent-mid);
 }
 
 .insert-point.active {
@@ -323,7 +376,7 @@ body.vv-pinned {
     top: 0.3rem;
     bottom: 0.3rem;
     width: 2px;
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--score-faint);
   }
   .insert-point.active { background: none; }
   .insert-point.active::before {
@@ -336,14 +389,14 @@ body.vv-pinned {
 
 /* Martyria display — glyph pair (note on top, tone below) */
 .martyria-col .neume {
-  color: #c00;
+  color: var(--neume-red);
 }
 
 .martyria-note {
   font-family: 'Neanes', sans-serif;
   font-size: 1.6rem;
   line-height: 1;
-  color: #c00;
+  color: var(--neume-red);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -353,7 +406,7 @@ body.vv-pinned {
   font-family: 'Neanes', sans-serif;
   font-size: 1.6rem;
   line-height: 1;
-  color: #c00;
+  color: var(--neume-red);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -375,7 +428,7 @@ body.vv-pinned {
 .section-break {
   flex-basis: 100%;
   height: 0.8rem;
-  border-bottom: 1px dashed rgba(0,0,0,0.15);
+  border-bottom: 1px dashed var(--score-rule);
   margin-bottom: 0.4rem;
 }
 
@@ -394,9 +447,9 @@ body.vv-pinned {
 
 /* Warning highlight on note */
 .note-col.has-warning {
-  outline: 2px solid #e8a33a;
+  outline: 2px dashed var(--warn);
   outline-offset: -1px;
-  background: rgba(232, 163, 58, 0.1);
+  background: var(--warn-soft);
 }
 
 /* Analysis info bar at bottom of score */
@@ -405,10 +458,10 @@ body.vv-pinned {
   gap: 1rem;
   padding: 0.5rem 0.75rem;
   margin-top: 1rem;
-  background: rgba(0,0,0,0.04);
+  background: var(--score-tint);
   border-radius: 4px;
   font-size: 0.8rem;
-  color: #555;
+  color: var(--score-muted);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -418,17 +471,17 @@ body.vv-pinned {
 }
 
 .analysis-scale {
-  color: #666;
+  color: var(--score-muted);
   font-style: italic;
 }
 
 .analysis-beat {
-  color: #888;
+  color: var(--score-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .analysis-warn {
-  color: #e8a33a;
+  color: var(--warn);
   cursor: help;
 }
 
@@ -450,7 +503,7 @@ body.vv-pinned {
 #palette {
   flex-shrink: 0;
   background: var(--surface);
-  border-top: 1px solid var(--border);
+  border-top: var(--hair) solid var(--border);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
@@ -458,7 +511,7 @@ body.vv-pinned {
 /* Tab row scrolls sideways; fades at the edges show more tabs are there */
 .palette-tabs-wrap {
   position: relative;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--hair) solid var(--border);
 }
 
 .palette-tabs-wrap::before,
@@ -541,7 +594,7 @@ body.keyboard-open #compose { display: none; }
 
 .palette-btn {
   background: var(--surface2);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   border-radius: 4px;
   padding: 0.3rem;
   cursor: pointer;
@@ -555,6 +608,7 @@ body.keyboard-open #compose { display: none; }
 
 .palette-btn:active {
   background: var(--accent);
+  border-color: var(--accent);
 }
 
 .palette-btn .glyph {
@@ -565,7 +619,7 @@ body.keyboard-open #compose { display: none; }
 }
 
 .palette-btn:active .glyph {
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .palette-btn .glyph-name {
@@ -588,7 +642,7 @@ body.keyboard-open #compose { display: none; }
   gap: 0.3rem;
   padding: 0.4rem;
   padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
+  border-top: var(--hair) solid var(--border);
 }
 
 .action-row {
@@ -600,7 +654,7 @@ body.keyboard-open #compose { display: none; }
   flex: 1;
   background: var(--surface2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   padding: 0.4rem 0.2rem;
   min-height: 44px;
   border-radius: 4px;
@@ -611,15 +665,15 @@ body.keyboard-open #compose { display: none; }
   letter-spacing: 0.05em;
 }
 
-.action-btn:active { background: var(--accent); color: #fff; }
-.action-btn.danger { color: #e85d3a; }
-.action-btn.danger:active { background: #c0392b; color: #fff; }
+.action-btn:active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.action-btn.danger { color: var(--danger); }
+.action-btn.danger:active { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
 
 /* Compose pad — the one-handed editing surface in the thumb zone */
 #compose {
   flex-shrink: 0;
   background: var(--surface);
-  border-top: 1px solid var(--border);
+  border-top: var(--hair) solid var(--border);
   padding: 0.4rem;
   padding-left: max(0.4rem, env(safe-area-inset-left));
   padding-right: max(0.4rem, env(safe-area-inset-right));
@@ -637,7 +691,7 @@ body.keyboard-open #compose { display: none; }
   max-height: 300px;
   border-radius: 12px;
   background: var(--surface2);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -681,7 +735,7 @@ body.keyboard-open #compose { display: none; }
   color: var(--accent2);
 }
 
-.pad-note.warn { color: #e8a33a; }
+.pad-note.warn { color: var(--warn); }
 
 .pad-hint {
   position: absolute;
@@ -699,18 +753,29 @@ body.keyboard-open #compose { display: none; }
   font-size: 0.95rem;
 }
 
-.action-btn.active { background: var(--accent); color: #fff; }
+.action-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 #palette[hidden] { display: none; }
 
 /* Print styles */
 @media print {
+  :root {
+    --bg: #fff;
+    --score-bg: #fff;
+    --score-text: #000;
+    --score-muted: #555;
+    --neume-color: #000;
+    --neume-red: #c00;
+    --lyric-color: #000;
+    --score-rule: rgba(0, 0, 0, 0.15);
+  }
   html, body { background: #fff; }
   body { height: auto; overflow: visible; position: static; }
   #header, #toolbar, #palette, #compose { display: none; }
   #score-area { padding: 0; overflow: visible; }
   .score {
     box-shadow: none;
+    border: none;
     border-radius: 0;
     max-width: none;
     min-height: auto;

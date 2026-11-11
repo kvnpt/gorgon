@@ -444,7 +444,7 @@ function martyriaColHtml(el, idx, analysis) {
   }
 
   return `<div class="${cls}" data-idx="${idx}">
-    <span class="neume" style="font-size:1.2rem; color:#c00;">[M]</span>
+    <span class="neume" style="font-size:1.2rem; color:var(--neume-red);">[M]</span>
     <span class="lyric">&nbsp;</span>
   </div>`;
 }
