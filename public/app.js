@@ -426,9 +426,7 @@ function getSupportGlyphs(el) {
     }
   };
 
-  addGlyph(el.timeNeume);
-  addGlyph(el.gorgonNeume);
-  // vocalExpression is drawn inline with the neume (see neumeRun)
+  // Time signs and vocalExpression are drawn inline with the neume (neumeRun)
   addGlyph(el.fthora);
   addGlyph(el.accidental);
 
@@ -510,18 +508,31 @@ function render() {
 // width and stands before the note; the other quality signs are zero-width
 // marks the font hangs under the glyph before them.
 function neumeRun(el) {
-  const base = getNeumeChar(el);
+  const mark = (name) => (name && glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '');
+  // Time signs are zero-width marks the font attaches to the neume
+  // (mark-to-base), so they go straight after it in the same text run
+  const base = getNeumeChar(el) + mark(el.timeNeume) + mark(el.gorgonNeume);
   const q = el.vocalExpression;
   if (!q || !glyphnames[q]) return base;
-  const qc = codepointToChar(glyphnames[q].codepoint);
+  const qc = mark(q);
   return q === 'vareia' ? qc + base : base + qc;
+}
+
+// Room for the signs drawn with the neume: above (klasma, gorgon) and below
+// (apli, dipli, quality marks)
+function neumeClasses(el) {
+  const time = [el.timeNeume, el.gorgonNeume].filter(n => n && glyphnames[n]);
+  const above = time.some(n => !isBottomSupport(n));
+  const below = time.some(n => isBottomSupport(n))
+    || (el.vocalExpression && el.vocalExpression !== 'vareia');
+  return `${above ? ' has-above' : ''}${below ? ' has-quality' : ''}`;
 }
 
 // Neume with all its signs, for the pad (above / run / below)
 function noteGlyphHtml(el) {
   const { above, below } = getSupportGlyphs(el);
   return `<span class="neume-support">${above}</span>`
-    + `<span class="pad-neume">${neumeRun(el)}</span>`
+    + `<span class="pad-neume${neumeClasses(el)}">${neumeRun(el)}</span>`
     + `<span class="neume-support-below">${below}</span>`;
 }
 
@@ -547,7 +558,7 @@ function noteColHtml(el, idx, analysis) {
 
   return `<div class="${cls}" data-idx="${idx}">
     ${aboveHtml}
-    <span class="neume${el.vocalExpression && el.vocalExpression !== 'vareia' ? ' has-quality' : ''}">${char}</span>
+    <span class="neume${neumeClasses(el)}">${char}</span>
     ${belowHtml}
     ${lyricHtml}
   </div>`;
@@ -853,10 +864,12 @@ const MAX_VALUE = 14;
 
 // What a vertical swipe edits, chosen with the pad's corner toggles:
 //   'quantity' (top-left, the default): the note's interval
+//   'time'     (top-left tapped again): the note's time sign (klasma, gorgon...)
 //   'quality'  (top-right): the note's quality sign (vareia, psifiston...)
-//   'martyria' (bottom-left): blank spots hold martyriae
+//   'martyria' (bottom-left): blank spots hold martyriae; switches itself
+//              off once one is committed
 let padMode = 'quantity';
-const PAD_MODE_BUTTONS = { quantity: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
+const PAD_MODE_BUTTONS = { quantity: 'pad-quant', time: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
 
 // Quality signs in the order a swipe up offers them (none first)
 const QUALITY_SIGNS = ['psifiston', 'vareia', 'omalon', 'antikenoma', 'heteron', 'endofonon'];
@@ -896,6 +909,109 @@ function qualityAllowed(sign, neume) {
 
 function qualityOptions(el) {
   return [null, ...QUALITY_SIGNS.filter(q => qualityAllowed(q, el.quantitativeNeume))];
+}
+
+// ----------------------------------------------------------------------------
+// Time signs, on one ladder from shortest to longest: a swipe up lengthens
+// the note by a beat (klasma, dipli, tripli, tetrapli), a swipe down shortens
+// it (gorgon, digorgon, trigorgon). Validity follows timeReplacements and
+// gorgonReplacements in neume-combinations.json (from Neanes).
+// ----------------------------------------------------------------------------
+const TIME_NAMES = {
+  trigorgon: 'Trigorgon', digorgon: 'Digorgon', gorgonAbove: 'Gorgon', gorgonBelow: 'Gorgon',
+  klasmaAbove: 'Klasma', klasmaBelow: 'Klasma', apli: 'Apli',
+  dipli: 'Dipli', tripli: 'Tripli', tetrapli: 'Tetrapli',
+};
+// Rank on the ladder: beats added (>0) or notes sharing the beat (<0)
+const TIME_RANK = {
+  trigorgon: -3, digorgon: -2, gorgonAbove: -1, gorgonBelow: -1,
+  gorgonDottedLeft: -1, gorgonDottedRight: -1,
+  klasmaAbove: 1, klasmaBelow: 1, apli: 1, dipli: 2, tripli: 3, tetrapli: 4,
+};
+const TIME_BEATS = { '-3': '¼ beat', '-2': '⅓ beat', '-1': '½ beat', 0: '1 beat',
+  1: '2 beats', 2: '3 beats', 3: '4 beats', 4: '5 beats' };
+
+const OLIGON_DESCENDING = ['OligonPlusIson', 'OligonPlusApostrophos', 'OligonPlusElaphron',
+  'OligonPlusHyporoe', 'OligonPlusElaphronPlusApostrophos', 'OligonPlusHamili'];
+// Kentemata neumes end in kentemata; KentemataPlusOligon is an oligon
+const isKentemata = (n) => /Kentemata|MiddleKentimata/.test(n) && n !== 'KentemataPlusOligon';
+
+// The klasma a neume takes: above, or below when its top is crowded
+function klasmaFor(neume) {
+  if (isKentemata(neume)) return null;
+  if (['Hyporoe', 'OligonPlusHyporoe', 'IsonPlusApostrophos', 'DoubleApostrophos'].includes(neume)) return null;
+  if (/^Petasti/.test(neume) || /(Double|Triple)(Hypsili|Ypsili)/.test(neume)
+      || OLIGON_DESCENDING.includes(neume)) return 'klasmaBelow';
+  return 'klasmaAbove';
+}
+
+function apliAllowed(neume) {
+  return !isKentemata(neume) && neume !== 'PetastiPlusRunningElaphron'
+    && !OLIGON_DESCENDING.includes(neume);
+}
+
+function longTimeAllowed(neume) {     // dipli, tripli, tetrapli
+  return !isKentemata(neume) && !/^Petasti/.test(neume) && neume !== 'KentemataPlusOligon'
+    && neume !== 'OligonPlusKentimaBelow' && !OLIGON_DESCENDING.includes(neume);
+}
+
+function gorgonAllowed(neume) {
+  return !/^Petasti/.test(neume) || neume === 'PetastiPlusHyporoe';
+}
+
+// The ladder for a note: [{ rank, time, gorgon }], shortest first
+function timeOptions(el) {
+  const n = el.quantitativeNeume;
+  const options = [];
+  if (gorgonAllowed(n)) {
+    options.push({ rank: -3, time: null, gorgon: 'trigorgon' },
+      { rank: -2, time: null, gorgon: 'digorgon' },
+      { rank: -1, time: null, gorgon: 'gorgonAbove' });
+  }
+  options.push({ rank: 0, time: null, gorgon: null });
+  const beat = klasmaFor(n) || (apliAllowed(n) ? 'apli' : null);
+  if (beat) options.push({ rank: 1, time: beat, gorgon: null });
+  if (longTimeAllowed(n)) {
+    options.push({ rank: 2, time: 'dipli', gorgon: null },
+      { rank: 3, time: 'tripli', gorgon: null },
+      { rank: 4, time: 'tetrapli', gorgon: null });
+  }
+  return options;
+}
+
+function timeRankOf(el) {
+  if (el.gorgonNeume) return TIME_RANK[el.gorgonNeume] ?? 0;
+  if (el.timeNeume) return TIME_RANK[el.timeNeume] ?? 0;
+  return 0;
+}
+
+// The next rung up (dir 1) or down (dir -1) from the note's time sign
+function timeStep(el, dir) {
+  const rank = timeRankOf(el);
+  const options = timeOptions(el);
+  return dir > 0
+    ? options.find(o => o.rank > rank) || null
+    : options.reverse().find(o => o.rank < rank) || null;
+}
+
+function timeLabel(opt) {
+  const sign = opt.gorgon || opt.time;
+  return sign ? TIME_NAMES[sign] || sign : 'none';
+}
+
+// After the neume changes, keep its time signs if the new neume can carry
+// them (moving a klasma above or below as needed), otherwise drop them
+function fitTimeSign(el) {
+  const n = el.quantitativeNeume;
+  if (TIME_RANK[el.gorgonNeume] < 0 && !gorgonAllowed(n)) el.gorgonNeume = null;
+  const t = el.timeNeume;
+  if (t === 'klasmaAbove' || t === 'klasmaBelow') {
+    el.timeNeume = klasmaFor(n) || (apliAllowed(n) ? 'apli' : null);
+  } else if (t === 'apli' && !apliAllowed(n)) {
+    el.timeNeume = klasmaFor(n);
+  } else if (['dipli', 'tripli', 'tetrapli'].includes(t) && !longTimeAllowed(n)) {
+    el.timeNeume = null;
+  }
 }
 
 function intervalOf(el) {
@@ -1080,10 +1196,13 @@ function commitAndAdvance() {
     if (cursorPos < score.elements.length) focusSymbol(cursorPos);
     else return false;
   } else {
-    if (score.elements[selectedIdx] === placeholderEl) {
+    const committed = score.elements[selectedIdx];
+    if (committed === placeholderEl) {
       pushHistory();          // committing the pending symbol is an edit
       keepPlaceholder();
     }
+    // Martyria mode is for one martyria: committing it goes back to notes
+    if (padMode === 'martyria' && committed.type === 'martyria') setPadMode('quantity');
     if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
     else enterBlank(score.elements.length);
   }
@@ -1093,11 +1212,18 @@ function commitAndAdvance() {
 function setPadMode(mode) {
   const wasMartyria = padMode === 'martyria';
   padMode = mode;
-  for (const [m, id] of Object.entries(PAD_MODE_BUTTONS)) {
+  for (const id of new Set(Object.values(PAD_MODE_BUTTONS))) {
     const btn = document.getElementById(id);
-    btn.classList.toggle('active', m === mode);
-    btn.setAttribute('aria-pressed', String(m === mode));
+    const on = PAD_MODE_BUTTONS[mode] === id;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', String(on));
   }
+  // The top-left toggle is Quant. or, tapped again, Time
+  const quant = document.getElementById('pad-quant');
+  quant.textContent = mode === 'time' ? 'Time' : 'Quant.';
+  quant.title = mode === 'time'
+    ? 'Time: swipe up lengthens the note (klasma, dipli…), down shortens it (gorgon…). Tap for Quant.'
+    : 'Quantity: swipes change the note\'s interval. Tap again for time signs';
   // A pending symbol switches with the mode (Ison <-> martyria)
   const p = placeholderIndex();
   if (p >= 0 && wasMartyria !== (mode === 'martyria')) {
@@ -1117,12 +1243,18 @@ function initComposePad() {
   const pad = document.getElementById('pad');
 
   // Corner toggles; they must not start a pad gesture. Tapping the mode
-  // that is on (other than quantity) turns it off again.
-  for (const [mode, id] of Object.entries(PAD_MODE_BUTTONS)) {
+  // that is on turns it off again (back to quantity); tapping Quant. while
+  // it is on switches it to Time, and back.
+  const nextMode = {
+    'pad-quant': () => (padMode === 'quantity' ? 'time' : 'quantity'),
+    'pad-qual': () => (padMode === 'quality' ? 'quantity' : 'quality'),
+    'pad-mode': () => (padMode === 'martyria' ? 'quantity' : 'martyria'),
+  };
+  for (const [id, next] of Object.entries(nextMode)) {
     const btn = document.getElementById(id);
     btn.addEventListener('pointerdown', (e) => e.stopPropagation());
     btn.addEventListener('click', () => {
-      setPadMode(padMode === mode && mode !== 'quantity' ? 'quantity' : mode);
+      setPadMode(next());
       haptic();
     });
   }
@@ -1151,6 +1283,13 @@ function initComposePad() {
         pushHistory();
         if (el === placeholderEl) keepPlaceholder();
         el.vocalExpression = options[next];
+      } else if (el.type === 'note' && padMode === 'time') {
+        const step = timeStep(el, dir);
+        if (!step) return;
+        pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
+        el.timeNeume = step.time;
+        el.gorgonNeume = step.gorgon;
       } else if (el.type === 'note') {
         pushHistory();
         if (el === placeholderEl) keepPlaceholder();
@@ -1161,7 +1300,8 @@ function initComposePad() {
             && !qualityAllowed(el.vocalExpression, el.quantitativeNeume)) {
           el.vocalExpression = null;
         }
-      } else if (el.type === 'martyria' && padMode !== 'quality') {
+        fitTimeSign(el);
+      } else if (el.type === 'martyria' && (padMode === 'quantity' || padMode === 'martyria')) {
         const options = martyriaOptions(selectedIdx);
         const i = optionIndexOf(el, selectedIdx, options);
         const next = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + dir));
@@ -1200,6 +1340,7 @@ function renderPad() {
   const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
   pad.classList.toggle('martyria-mode', padMode === 'martyria');
   pad.classList.toggle('quality-mode', padMode === 'quality');
+  pad.classList.toggle('time-mode', padMode === 'time');
   glyphEl.classList.remove('martyria');
 
   if (el && el.type === 'note' && padMode === 'quality') {
@@ -1214,6 +1355,19 @@ function renderPad() {
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
     const up = i < options.length - 1 ? `↑ ${label(options[i + 1])}` : '';
     const down = i > 0 ? `↓ ${label(options[i - 1])}` : '';
+    hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
+  } else if (el && el.type === 'note' && padMode === 'time') {
+    const a = analysisResult[selectedIdx];
+    const sign = el.gorgonNeume || el.timeNeume;
+    const upStep = timeStep(el, 1);
+    const downStep = timeStep(el, -1);
+    pad.classList.remove('empty');
+    glyphEl.innerHTML = noteGlyphHtml(el);
+    valueEl.textContent = sign ? `${TIME_NAMES[sign] || sign} · ${TIME_BEATS[timeRankOf(el)]}` : '1 beat';
+    noteEl.textContent = a?.noteName || '';
+    noteEl.classList.toggle('warn', a?.warnings?.length > 0);
+    const up = upStep ? `↑ ${timeLabel(upStep)}` : '';
+    const down = downStep ? `↓ ${timeLabel(downStep)}` : '';
     hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el && el.type === 'note') {
     const v = intervalOf(el);
@@ -1239,8 +1393,8 @@ function renderPad() {
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
     const up = options[i + 1] ? `↑ ${noteNameOf(options[i + 1].value)}` : '';
     const down = i > 0 ? `↓ ${noteNameOf(options[i - 1].value)}` : '';
-    hintEl.textContent = padMode === 'quality'
-      ? 'Quality signs go on notes · Tap to commit'
+    hintEl.textContent = padMode === 'quality' || padMode === 'time'
+      ? `${padMode === 'time' ? 'Time' : 'Quality'} signs go on notes · Tap to commit`
       : [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el) {
     pad.classList.remove('empty');
