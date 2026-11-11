@@ -122,7 +122,7 @@ function resolveActivatedScale(fthoraName, currentNoteName, fthoraRules) {
  * Compute the martyria root sign for a given note value and scale.
  * Returns { rootSign, noteValue } or null if no mapping exists.
  */
-function computeMartyria(noteValue, currentScale, martyriaRules) {
+export function computeMartyria(noteValue, currentScale, martyriaRules) {
   const scaleRules = martyriaRules.rootSignsByScale[currentScale];
   if (!scaleRules) return null;
 
@@ -270,12 +270,17 @@ export function analyzeScore(elements, modeKey, theory) {
 
       // ----- MARTYRIA -----
       case 'martyria': {
+        // An explicit martyria (one the user chose, e.g. at the start of a
+        // piece) testifies a pitch and sets it; an auto one reads it.
+        if (element.auto === false && typeof element.noteValue === 'number') {
+          currentNoteValue = element.noteValue;
+        }
         entry.noteValue = currentNoteValue;
         entry.noteName = noteValueToName(currentNoteValue, valueToNameMap);
         entry.scalePosition = ((currentNoteValue % 7) + 7) % 7;
         entry.currentScale = currentScale;
 
-        if (element.auto) {
+        {
           const martyria = computeMartyria(currentNoteValue, currentScale, martyriaRules);
           if (martyria) {
             entry.autoMartyria = {
