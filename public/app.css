@@ -974,7 +974,8 @@ body.keyboard-open #compose { display: none; }
   color: var(--bg);
 }
 
-.pad.quality-mode {
+.pad.quality-mode,
+.pad.time-mode {
   box-shadow: inset 0 0 0 2px var(--text);
 }
 
@@ -999,8 +1000,11 @@ body.keyboard-open #compose { display: none; }
 #palette:not([hidden]) ~ #compose .pad-glyph { font-size: 3rem; min-height: 3rem; }
 #palette:not([hidden]) ~ #compose .pad-hint { display: none; }
 
-/* Quality marks (psifiston, omalon…) hang below the neume: leave room */
+/* Quality marks (psifiston, omalon…) and apli/dipli hang below the neume,
+   klasma and gorgons sit above it: leave room */
 .neume.has-quality { padding-bottom: 0.45em; }
+.neume.has-above { padding-top: 0.45em; }
+.pad-glyph .pad-neume.has-above { padding-top: 0.3em; }
 
 /*
  * Lyric mode: the words bar takes the pad's place (and stays above the
