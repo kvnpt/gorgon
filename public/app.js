@@ -1146,10 +1146,11 @@ function fitTimeSign(el) {
 // ----------------------------------------------------------------------------
 // Combined neumes: two notes in a row that one neume writes more simply,
 // usually so a syllable can sit over both.
-//   Running elaphron: an apostrophos with a gorgon, then another apostrophos
-//     (two steps down; the running elaphron carries the first gorgon itself,
-//     so only the second note's time sign is written on it)
-//   Kentemata over an oligon: two oligons in a row (two steps up)
+//   Running elaphron: two apostrophoi in a row (two steps down). A gorgon
+//     on the first is built into the running elaphron; the second note's
+//     time sign is written on it
+//   Kentemata on an oligon: two oligons in a row (two steps up); the
+//     kentemata go on top, or underneath when a gorgon takes the top
 //   A note on the oligon "table", then kentemata: ison, apostrophos,
 //     elaphron, elaphron+apostrophos or hamili followed by an oligon
 // The score marks each such pair and a tap (on the mark or the pad's
@@ -1170,11 +1171,12 @@ const COMBINE_RULES = [
   {
     result: 'RunningElaphron', name: 'Running elaphron',
     first: (a) => a.quantitativeNeume === 'Apostrophos'
-      && SIMPLE_GORGONS.includes(a.gorgonNeume) && !a.timeNeume,
+      && (!a.gorgonNeume || SIMPLE_GORGONS.includes(a.gorgonNeume)) && !a.timeNeume,
     second: (b) => b.quantitativeNeume === 'Apostrophos',
   },
   {
-    result: 'KentemataPlusOligon', name: 'Kentemata over an oligon',
+    result: (a, b) => (b.gorgonNeume ? 'OligonPlusKentemata' : 'KentemataPlusOligon'),
+    name: 'Kentemata on an oligon',
     first: (a) => a.quantitativeNeume === 'Oligon' && plainTime(a),
     second: isOligon,
   },
@@ -1205,8 +1207,10 @@ function combinedNote(idx) {
   const b = score.elements[idx + 1];
   if (a?.type !== 'note' || b?.type !== 'note') return null;
   if (a === placeholderEl || b === placeholderEl) return null;
-  const rule = COMBINE_RULES.find(r => r.first(a) && r.second(b));
-  if (!rule || !NEUME_TO_SBMUFL[rule.result]) return null;
+  const found = COMBINE_RULES.find(r => r.first(a) && r.second(b));
+  if (!found) return null;
+  const rule = typeof found.result === 'function' ? { ...found, result: found.result(a, b) } : found;
+  if (!NEUME_TO_SBMUFL[rule.result]) return null;
   if (b.fthora || b.accidental || b.vocalExpression || b.ison || b.measureBar) return null;
   if (ownSyllable(b) && lyricShiftEnd(idx + 2) < 0) return null;
   if (a.vocalExpression && !qualityAllowed(a.vocalExpression, rule.result)) return null;
