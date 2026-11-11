@@ -565,7 +565,7 @@ function render() {
   html += insertPointHtml(0);
 
   // Pairs of notes one neume can write, unless their mark was dismissed
-  const pairs = combinablePairs().filter(p => !score.elements[p.idx].combineDismissed);
+  const pairs = focusPairs();
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
 
   for (let i = 0; i < score.elements.length; i++) {
@@ -645,15 +645,13 @@ function noteGlyphHtml(el) {
 }
 
 // The mark over a combinable pair: the combined neume, small and orange,
-// standing over the join of the two notes, with a × to dismiss it
-// (tapping the gap between the two notes brings it back)
+// standing over the join of the two notes. Shown only for the note in focus
 function combineMarkHtml(pair) {
   const char = getNeumeChar(pair.merged);
   const label = esc(`Combine into ${pair.rule.name.toLowerCase()}`);
   return `<span class="combine-mark">`
     + `<button type="button" class="combine-go" data-combine="${pair.idx}" title="${label}" aria-label="${label}">`
     + `<span class="combine-glyph">${char}</span></button>`
-    + `<button type="button" class="combine-x" data-dismiss="${pair.idx}" title="Dismiss" aria-label="Dismiss">×</button>`
     + `</span>`;
 }
 
@@ -719,7 +717,7 @@ function bindScoreEvents() {
   const scoreEl = document.getElementById('score');
 
   // The mark over a pair of notes combines them into one neume
-  scoreEl.querySelectorAll('.combine-go, .combine-x').forEach(btn => {
+  scoreEl.querySelectorAll('.combine-go').forEach(btn => {
     // In lyric mode the text field keeps focus, so the keyboard stays up
     const keepFocus = (e) => { if (lyricMode) e.preventDefault(); };
     btn.addEventListener('pointerdown', keepFocus);
@@ -733,19 +731,6 @@ function bindScoreEvents() {
       haptic();
       if (lyricMode) showLyricCaret(undefined, true);
       else refresh();
-    });
-  });
-  // Dismissing a mark hides it (kept with the score) until the gap between
-  // its two notes is tapped
-  scoreEl.querySelectorAll('.combine-x').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const el = score.elements[parseInt(btn.dataset.dismiss)];
-      if (!el) return;
-      pushHistory();
-      el.combineDismissed = true;
-      haptic();
-      render();
     });
   });
 
@@ -785,16 +770,6 @@ function bindScoreEvents() {
     ip.addEventListener('click', (e) => {
       e.stopPropagation();
       let pos = parseInt(ip.dataset.insert);
-      // The gap between a pair whose mark was dismissed offers it again
-      const before = score.elements[pos - 1];
-      if (before?.combineDismissed && combinedNote(pos - 1)) {
-        pushHistory();
-        delete before.combineDismissed;
-        haptic();
-        render();
-        if (lyricMode) document.getElementById('lyric-input').focus();
-        return;
-      }
       if (lyricMode) { document.getElementById('lyric-input').focus(); return; }
       const p = placeholderIndex();
       dropPlaceholder();
@@ -1253,24 +1228,25 @@ function combinedNote(idx) {
   return { rule, merged };
 }
 
-// Every combinable pair, left to right; a note belongs to one pair at most
-function combinablePairs() {
-  const pairs = [];
-  for (let i = 0; i < score.elements.length - 1; i++) {
-    const c = combinedNote(i);
-    if (c) { pairs.push({ idx: i, ...c }); i++; }
-  }
-  return pairs;
-}
-
-// The pair the composer is working on: the one the focused note belongs
-// to, or the one just finished before a blank spot
-function pairAtFocus(pairs = combinablePairs()) {
+// Combinations offered for the note in focus, not across the whole score:
+// with the note before it and with the note after it. On a blank spot (or
+// its pending note) it is the pair just finished before it.
+function focusPairs() {
   const focusEl = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
   const pending = !focusEl || focusEl === placeholderEl;
-  const at = pending ? (selectedIdx >= 0 ? selectedIdx : cursorPos) - 1 : selectedIdx;
-  return pairs.find(p => (p.idx === at || p.idx + 1 === at)
-    && !score.elements[p.idx].combineDismissed) || null;
+  const starts = pending
+    ? [(selectedIdx >= 0 ? selectedIdx : cursorPos) - 2]
+    : [selectedIdx - 1, selectedIdx];
+  return starts.filter(i => i >= 0)
+    .map(i => { const c = combinedNote(i); return c && { idx: i, ...c }; })
+    .filter(Boolean);
+}
+
+// The pad's pill takes one: the pair that ends on the focused note (the one
+// just written), else the one it starts
+function pairAtFocus() {
+  const pairs = focusPairs();
+  return pairs[0] || null;
 }
 
 function combinePair(idx) {
