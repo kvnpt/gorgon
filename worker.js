@@ -10,6 +10,7 @@ import modeKeys from './data/theory/mode-keys.json';
 import neumeCombinations from './data/theory/neume-combinations.json';
 import martyriaRules from './data/theory/martyria-rules.json';
 import attractions from './data/theory/attractions.json';
+import { handleAccount, handleLogin } from './lib/documents.js';
 
 const API = {
   '/api/glyphs': glyphs,
@@ -34,6 +35,10 @@ export default {
     if (pathname === '/health') {
       return new Response('ok\n', { headers: { 'content-type': 'text/plain' } });
     }
+
+    // Behind Cloudflare Access (lib/access.js): sign-in and saved documents.
+    if (pathname === '/login') return handleLogin(request, env);
+    if (pathname.startsWith('/api/account/')) return handleAccount(request, env, pathname);
 
     if (pathname.startsWith('/api/')) {
       const key = pathname.replace(/\.json$/, '');

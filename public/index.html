@@ -15,6 +15,7 @@
       <h1>Gorgon</h1>
     </div>
     <div class="header-right">
+      <button id="btn-account" class="header-btn" hidden>Sign in</button>
       <button id="btn-new" class="header-btn" title="New score">New</button>
       <button id="btn-export" class="header-btn" title="Export PDF">PDF</button>
     </div>
@@ -86,6 +87,18 @@
       <button id="btn-palette" class="action-btn" aria-expanded="false">Signs</button>
     </div>
   </div>
+
+  <!-- Account: the scores saved to a signed-in account (account.js) -->
+  <div id="account-sheet" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-label="Your scores">
+      <div class="sheet-head">
+        <span class="sheet-heading">Scores</span>
+        <button type="button" class="header-btn" data-close>Done</button>
+      </div>
+      <div class="sheet-body"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
 
   <script type="module" src="app.js"></script>
 </body>

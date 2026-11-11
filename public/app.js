@@ -6,6 +6,7 @@ import { createScore, createNote, createMartyria, createModeKey,
          SBMUFL_TO_NEUME, NEUME_TO_SBMUFL } from './models.js';
 import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
+import { initAccount, currentIsSaved, newDocId } from './account.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -743,16 +744,11 @@ function initToolbar() {
     render();
   });
 
-  document.getElementById('btn-new').addEventListener('click', () => {
-    if (storableScore().elements.length > 0 && !confirm('Start a new score? Current work will be lost.')) return;
-    score = createScore();
-    placeholderEl = null;
-    history = [];
-    analysisResult = [];
-    document.getElementById('score-title').value = '';
-    document.getElementById('score-mode').value = '1';
-    enterBlank(0);
-    refresh();
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    // Signed in, the open score is safe on the account, so no need to ask.
+    if (storableScore().elements.length > 0 && !(await currentIsSaved())
+        && !confirm('Start a new score? Current work will be lost.')) return;
+    newScore();
   });
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
@@ -1199,6 +1195,40 @@ function initKeyboard() {
 // LOCAL STORAGE
 // ============================================================================
 
+// Replace the open score (a new one, or one opened from the account)
+function openScore(next) {
+  // One step of insurance: the score being put away stays in this browser
+  // until the next switch, whatever the account did with it.
+  try {
+    const prev = localStorage.getItem('gorgon-score-v2');
+    if (prev) localStorage.setItem('gorgon-score-v2-previous', prev);
+  } catch (e) { /* storage refused */ }
+  score = next;
+  score.metadata = score.metadata || {};
+  if (!score.metadata.id) score.metadata.id = newDocId();
+  placeholderEl = null;
+  history = [];
+  analysisResult = [];
+  document.getElementById('score-title').value = score.metadata.title || '';
+  document.getElementById('score-mode').value = score.modeKey?.mode || 1;
+  enterBlank(score.elements.length);
+  refresh();
+  saveToLocal();
+}
+
+function newScore() {
+  openScore(createScore());
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+}
+
 function saveToLocal() {
   try {
     localStorage.setItem('gorgon-score-v2', JSON.stringify(storableScore()));
@@ -1210,6 +1240,13 @@ function loadFromLocal() {
     const saved = localStorage.getItem('gorgon-score-v2');
     if (saved) {
       score = JSON.parse(saved);
+      // Scores saved before accounts have no id: give this one its own, kept
+      // with it from now on, so it joins the account as itself on sign-in.
+      score.metadata = score.metadata || {};
+      if (!score.metadata.id) {
+        score.metadata.id = newDocId();
+        localStorage.setItem('gorgon-score-v2', JSON.stringify(score));
+      }
       document.getElementById('score-title').value = score.metadata?.title || '';
       document.getElementById('score-mode').value = score.modeKey?.mode || 1;
     }
@@ -1267,6 +1304,7 @@ async function init() {
   enterBlank(score.elements.length);
   reanalyze();
   render();
+  initAccount({ getScore: storableScore, openScore, newScore, toast, saveLocal: saveToLocal });
 }
 
 init();
