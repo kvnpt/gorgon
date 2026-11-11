@@ -58,9 +58,35 @@ let analysisResult = [];
 let history = [];
 const MAX_HISTORY = 200;
 
+// The pending symbol sitting in a blank spot (see COMPOSE PAD). It is part
+// of score.elements so it renders and analyses like any symbol, but it is
+// left out of history snapshots and saves until it is committed or changed.
+let placeholderEl = null;
+
+function placeholderIndex() {
+  return placeholderEl ? score.elements.indexOf(placeholderEl) : -1;
+}
+
+// The score as it should be stored: without an untouched placeholder
+function storableScore() {
+  const p = placeholderIndex();
+  if (p < 0) return score;
+  return { ...score, elements: score.elements.filter((_, i) => i !== p) };
+}
+
 // Each snapshot keeps the focus too, so Undo puts you back where you were
 function pushHistory() {
-  history.push(JSON.stringify({ score, selectedIdx, cursorPos }));
+  const p = placeholderIndex();
+  let sel = selectedIdx;
+  let pos = cursorPos;
+  if (p >= 0) {
+    if (sel === p) { sel = -1; pos = p; }
+    else {
+      if (sel > p) sel--;
+      if (pos > p) pos--;
+    }
+  }
+  history.push(JSON.stringify({ score: storableScore(), selectedIdx: sel, cursorPos: pos }));
   if (history.length > MAX_HISTORY) history.shift();
 }
 
@@ -68,9 +94,11 @@ function undo() {
   if (history.length === 0) return;
   const snap = JSON.parse(history.pop());
   score = snap.score;
+  placeholderEl = null;
   cursorPos = Math.min(snap.cursorPos, score.elements.length);
   selectedIdx = snap.selectedIdx < score.elements.length ? snap.selectedIdx : -1;
   editingLyricIdx = -1;
+  if (selectedIdx < 0) enterBlank(cursorPos);
   reanalyze();
   render();
 }
@@ -302,14 +330,14 @@ function initPaletteGrid() {
     // Martyria tab: replace the focused martyria, or insert one at the cursor
     if (btn.dataset.mvalue !== undefined) {
       const opt = { value: Number(btn.dataset.mvalue), auto: btn.dataset.mauto === '1' };
-      pushHistory();
       if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'martyria') {
+        pushHistory();
         score.elements[selectedIdx] = martyriaFromOption(opt);
+        placeholderEl = null;
+        refresh();
       } else {
-        score.elements.splice(cursorPos, 0, martyriaFromOption(opt));
-        focusSymbol(cursorPos);
+        insertElement(martyriaFromOption(opt));
       }
-      refresh();
       return;
     }
 
@@ -317,8 +345,10 @@ function initPaletteGrid() {
     const cp = btn.dataset.cp;
 
     // If a neume is selected and this is a support category, add as modifier
-    if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
+    if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note'
+        && ['temporal', 'quality', 'fthores'].includes(currentCategory)) {
       const el = score.elements[selectedIdx];
+      if (el === placeholderEl) keepPlaceholder();
       if (currentCategory === 'temporal') {
         pushHistory();
         // Map to timeNeume or gorgonNeume
@@ -349,20 +379,13 @@ function initPaletteGrid() {
     }
 
     // Insert new element at cursor
-    pushHistory();
-    {
-      // Map SBMuFL glyph name to Neanes quantitative neume name
-      const neume = SBMUFL_TO_NEUME[glyphName] || glyphName;
-      const el = createNote(neume);
-      // Store the SBMuFL glyph name + codepoint for rendering
-      el._glyph = glyphName;
-      el._codepoint = cp;
-      score.elements.splice(cursorPos, 0, el);
-    }
-    cursorPos++;
-    selectedIdx = cursorPos - 1;
-    reanalyze();
-    render();
+    // Map SBMuFL glyph name to Neanes quantitative neume name
+    const neume = SBMUFL_TO_NEUME[glyphName] || glyphName;
+    const el = createNote(neume);
+    // Store the SBMuFL glyph name + codepoint for rendering
+    el._glyph = glyphName;
+    el._codepoint = cp;
+    insertElement(el);
   });
 }
 
@@ -486,7 +509,8 @@ function noteColHtml(el, idx, analysis) {
   const char = getNeumeChar(el);
   const isSelected = idx === selectedIdx;
   const hasWarning = analysis?.warnings?.length > 0;
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}`;
+  const pending = el === placeholderEl ? ' placeholder' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -511,7 +535,8 @@ function noteColHtml(el, idx, analysis) {
 
 function martyriaColHtml(el, idx, analysis) {
   const isSelected = idx === selectedIdx;
-  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}`;
+  const pending = el === placeholderEl ? ' placeholder' : '';
+  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}${pending}`;
   const chars = martyriaChars(analysis);
   const title = esc(`Martyria ${analysis?.noteName || ''}${el.auto === false ? '' : ' (auto)'}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
@@ -541,7 +566,13 @@ function bindScoreEvents() {
     col.addEventListener('click', (e) => {
       if (e.target.classList.contains('lyric-input')) return;
       e.stopPropagation();
-      const idx = parseInt(col.dataset.idx);
+      let idx = parseInt(col.dataset.idx);
+      // Leaving a blank spot drops its untouched placeholder
+      if (score.elements[idx] !== placeholderEl) {
+        const target = score.elements[idx];
+        dropPlaceholder();
+        idx = score.elements.indexOf(target);
+      }
       // Tapping the syllable line of a note goes straight to lyric editing
       const tappedLyric = e.target.classList.contains('lyric');
       if (tappedLyric && score.elements[idx]?.type === 'note') {
@@ -565,10 +596,12 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
     ip.addEventListener('click', (e) => {
       e.stopPropagation();
-      cursorPos = parseInt(ip.dataset.insert);
-      selectedIdx = -1;
-      editingLyricIdx = -1;
-      render();
+      let pos = parseInt(ip.dataset.insert);
+      const p = placeholderIndex();
+      dropPlaceholder();
+      if (p >= 0 && pos > p) pos--;
+      enterBlank(pos);
+      refresh();
     });
   });
 
@@ -577,10 +610,9 @@ function bindScoreEvents() {
   const content = scoreEl.querySelector('.score-content');
   content.addEventListener('click', (e) => {
     if (e.target !== content) return;
-    cursorPos = score.elements.length;
-    selectedIdx = -1;
-    editingLyricIdx = -1;
-    render();
+    dropPlaceholder();
+    enterBlank(score.elements.length);
+    refresh();
   });
 
   scoreEl.querySelectorAll('.lyric-input').forEach(input => {
@@ -590,6 +622,7 @@ function bindScoreEvents() {
     input.addEventListener('input', () => {
       // Snapshot once per edit, before the change, so Undo restores the old lyric
       if (!edited) { pushHistory(); edited = true; }
+      if (score.elements[idx] === placeholderEl) keepPlaceholder();
       score.elements[idx].lyric = input.value;
       input.style.width = Math.max(3, input.value.length + 1) + 'ch';
     });
@@ -626,7 +659,18 @@ function bindScoreEvents() {
   });
 }
 
+// Insert a symbol from the Signs drawer at the focus. On a blank spot's
+// pending symbol, the new one takes its place.
+function insertElement(el) {
+  dropPlaceholder();
+  pushHistory();
+  score.elements.splice(cursorPos, 0, el);
+  focusSymbol(cursorPos);
+  refresh();
+}
+
 function startLyricEdit(idx) {
+  if (score.elements[idx] === placeholderEl) placeholderEl = null;
   selectedIdx = idx;
   cursorPos = idx + 1;
   editingLyricIdx = idx;
@@ -635,6 +679,7 @@ function startLyricEdit(idx) {
 
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
 function moveLeft() {
+  dropPlaceholder();
   if (selectedIdx > 0) {
     selectedIdx--;
     cursorPos = selectedIdx + 1;
@@ -652,6 +697,7 @@ function moveLeft() {
 }
 
 function moveRight() {
+  if (selectedIdx >= 0 && score.elements[selectedIdx] === placeholderEl) placeholderEl = null;
   if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
     selectedIdx++;
     cursorPos = selectedIdx + 1;
@@ -698,16 +744,15 @@ function initToolbar() {
   });
 
   document.getElementById('btn-new').addEventListener('click', () => {
-    if (score.elements.length > 0 && !confirm('Start a new score? Current work will be lost.')) return;
+    if (storableScore().elements.length > 0 && !confirm('Start a new score? Current work will be lost.')) return;
     score = createScore();
-    cursorPos = 0;
-    selectedIdx = -1;
-    editingLyricIdx = -1;
+    placeholderEl = null;
     history = [];
     analysisResult = [];
     document.getElementById('score-title').value = '';
     document.getElementById('score-mode').value = '1';
-    render();
+    enterBlank(0);
+    refresh();
   });
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
@@ -729,29 +774,30 @@ function initToolbar() {
   });
 
   document.getElementById('btn-space').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createSpacer());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createSpacer());
   });
 
   document.getElementById('btn-newline').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createSectionBreak());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createSectionBreak());
   });
 
   document.getElementById('btn-delete').addEventListener('click', () => {
+    // On a blank spot's placeholder, Del works like backspace: it removes
+    // the symbol before it and keeps the placeholder where it is.
+    const p = placeholderIndex();
+    if (p >= 0 && selectedIdx === p) {
+      if (p === 0) return;
+      pushHistory();
+      score.elements.splice(p - 1, 1);
+      focusSymbol(p - 1);
+      refresh();
+      return;
+    }
     if (selectedIdx >= 0) {
       pushHistory();
       score.elements.splice(selectedIdx, 1);
-      cursorPos = Math.min(selectedIdx, score.elements.length);
-      selectedIdx = -1;
-      reanalyze();
-      render();
+      enterBlank(Math.min(selectedIdx, score.elements.length));
+      refresh();
     } else if (cursorPos > 0) {
       pushHistory();
       cursorPos--;
@@ -764,19 +810,11 @@ function initToolbar() {
   document.getElementById('btn-undo').addEventListener('click', undo);
 
   document.getElementById('btn-barline').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createBarline());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createBarline());
   });
 
   document.getElementById('btn-martyria').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createMartyria());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createMartyria());
   });
 }
 
@@ -914,6 +952,41 @@ function focusEmptySlot(pos) {
   editingLyricIdx = -1;
 }
 
+// The symbol a blank spot starts with: Ison, or in martyria mode the
+// most likely martyria
+function blankSymbol(pos) {
+  return martyriaMode ? martyriaFromOption(martyriaOptions(pos)[0]) : createNote('Ison');
+}
+
+// Moving into a blank spot puts a pending symbol there and focuses it.
+// It stays pending (dimmed, not saved) until it is changed or committed;
+// leaving it any other way removes it again.
+function enterBlank(pos) {
+  dropPlaceholder();
+  const el = blankSymbol(pos);
+  score.elements.splice(pos, 0, el);
+  placeholderEl = el;
+  focusSymbol(pos);
+}
+
+// Remove an untouched placeholder, leaving focus on the empty slot it held
+function dropPlaceholder() {
+  const p = placeholderIndex();
+  placeholderEl = null;
+  if (p < 0) return;
+  score.elements.splice(p, 1);
+  if (selectedIdx === p) focusEmptySlot(p);
+  else {
+    if (selectedIdx > p) selectedIdx--;
+    if (cursorPos > p) cursorPos--;
+  }
+}
+
+// The placeholder becomes a real symbol once it is changed or committed
+function keepPlaceholder() {
+  placeholderEl = null;
+}
+
 function haptic() {
   try { navigator.vibrate?.(8); } catch (e) { /* unsupported */ }
 }
@@ -940,16 +1013,20 @@ function insertOnEmptySlot(kind) {
   focusSymbol(cursorPos);
 }
 
-// Commit the focused symbol and move on
+// Commit the focused symbol and move on: to the next symbol, or into a
+// new blank spot (with its Ison) after the last one
 function commitAndAdvance() {
   if (selectedIdx < 0) {
     // Empty slot: nothing to commit, but step onto the next symbol if any
     if (cursorPos < score.elements.length) focusSymbol(cursorPos);
     else return false;
-  } else if (selectedIdx < score.elements.length - 1) {
-    focusSymbol(selectedIdx + 1);
   } else {
-    focusEmptySlot(score.elements.length);
+    if (score.elements[selectedIdx] === placeholderEl) {
+      pushHistory();          // committing the pending symbol is an edit
+      keepPlaceholder();
+    }
+    if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
+    else enterBlank(score.elements.length);
   }
   return true;
 }
@@ -959,7 +1036,19 @@ function setMartyriaMode(on) {
   const btn = document.getElementById('pad-mode');
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', String(on));
-  renderPad();
+  // A pending symbol switches with the mode (Ison <-> martyria)
+  const p = placeholderIndex();
+  if (p >= 0) {
+    placeholderEl = null;
+    score.elements.splice(p, 1);
+    const el = blankSymbol(p);
+    score.elements.splice(p, 0, el);
+    placeholderEl = el;
+    if (selectedIdx === p) focusSymbol(p);
+    refresh();
+  } else {
+    renderPad();
+  }
 }
 
 function initComposePad() {
@@ -974,12 +1063,9 @@ function initComposePad() {
     onTap() {
       if (selectedIdx >= 0) {
         if (!commitAndAdvance()) return;
-        haptic();
-        render();
-        scrollSelectionIntoView();
-        return;
+      } else {
+        insertOnEmptySlot('repeat');
       }
-      insertOnEmptySlot('repeat');
       haptic();
       refresh();
     },
@@ -990,6 +1076,7 @@ function initComposePad() {
         insertOnEmptySlot('ison');     // first swipe up or down gives Ison
       } else if (el.type === 'note') {
         pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
         const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, intervalOf(el) + dir));
         setNoteValue(el, value, familyOf(el));
       } else if (el.type === 'martyria') {
@@ -998,6 +1085,7 @@ function initComposePad() {
         const next = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + dir));
         if (next === i) return;
         pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
         score.elements[selectedIdx] = martyriaFromOption(options[next]);
       } else {
         return;
@@ -1010,13 +1098,13 @@ function initComposePad() {
       if (dir === 'right') {
         if (!commitAndAdvance()) return;
       } else {
+        dropPlaceholder();
         if (selectedIdx > 0) focusSymbol(selectedIdx - 1);
         else if (selectedIdx < 0 && cursorPos > 0) focusSymbol(cursorPos - 1);
-        else return;
+        else { refresh(); return; }
       }
       haptic();
-      render();
-      scrollSelectionIntoView();
+      refresh();
     },
   });
 }
@@ -1039,7 +1127,9 @@ function renderPad() {
     valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
-    hintEl.textContent = 'Swipe ↕ to change · Tap to commit';
+    hintEl.textContent = el === placeholderEl
+      ? 'New note · Swipe ↕ to change · Tap to keep Ison'
+      : 'Swipe ↕ to change · Tap to commit';
   } else if (el && el.type === 'martyria') {
     const a = analysisResult[selectedIdx];
     const chars = martyriaChars(a);
@@ -1111,7 +1201,7 @@ function initKeyboard() {
 
 function saveToLocal() {
   try {
-    localStorage.setItem('gorgon-score-v2', JSON.stringify(score));
+    localStorage.setItem('gorgon-score-v2', JSON.stringify(storableScore()));
   } catch (e) { /* storage full */ }
 }
 
@@ -1173,8 +1263,8 @@ async function init() {
   initToolbar();
   initKeyboard();
   initComposePad();
-  // Open on the empty slot at the end of the score
-  focusEmptySlot(score.elements.length);
+  // Open on a blank spot at the end of the score
+  enterBlank(score.elements.length);
   reanalyze();
   render();
 }

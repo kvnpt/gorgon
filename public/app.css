@@ -866,3 +866,12 @@ body.keyboard-open #compose { display: none; }
   height: 18dvh;
   min-height: 130px;
 }
+
+/* A blank spot's pending symbol: shown dimmed until it is changed or
+   committed, and never printed */
+.note-col.placeholder .neume,
+.note-col.placeholder .martyria { opacity: 0.4; }
+
+@media print {
+  .note-col.placeholder { display: none; }
+}

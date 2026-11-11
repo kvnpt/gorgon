@@ -31,7 +31,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 - Each neume references an SBMuFL glyph name + codepoint
 - Rendering: font glyphs in PUA range via `font-family: 'Neanes'`
 - Palette organised by SBMuFL ranges (13 categories → 6 tabs)
-- Compose pad (thumb zone): focus is a symbol or an empty slot. One vertical swipe = exactly one increment (no dial). On the empty slot, the first swipe inserts Ison; tap repeats the previous note. On a note, swipe up/down steps its interval (`neume-values.json`). Tap on a symbol or swipe right commits and moves on; swipe left goes back
+- Compose pad (thumb zone): focus is a symbol or an empty slot. One vertical swipe = exactly one increment (no dial). Moving into a blank spot (committing the last symbol, tapping a gap, loading) puts a pending Ison there (`placeholderEl`: dimmed, not saved, not printed, dropped if you leave backwards; it becomes real once changed or committed). In martyria mode the pending symbol is the first martyria option. Del on it acts as backspace. On a note, swipe up/down steps its interval (`neume-values.json`). Tap on a symbol or swipe right commits and moves on; swipe left goes back
 - Martyria mode (pad's bottom-left toggle): the empty slot inserts martyriae instead, and swipes on a martyria cycle its options: the reached pitch (auto) first, then the mode's base notes from `mode-keys.json`, then the rest by distance. A martyria renders as note letter + zero-width root sign (`martyria-rules.json` via `computeMartyria`); an explicit one (`auto:false, noteValue`) sets the pitch
 - Palette is hidden behind the Signs button; supporting neumes (gorgon, klasma) attach to the focused base neume
 - Auto-save to localStorage every 5s
