@@ -20,7 +20,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 | `wrangler.jsonc` | Worker config |
 | `public/app.js` | Editor logic: data model, palette, renderer, compose pad, events |
 | `public/account.js` | Sign-in (Cloudflare Access) and saving scores to the account; Scores sheet |
-| `lib/access.js`, `lib/documents.js` | Worker: Access JWT check, `/login`, `/api/account/documents` on D1 |
+| `lib/access.js`, `lib/documents.js` | Worker: Access JWT check, `/admin` (sign-in), `/api/admin/documents` on D1 |
 | `public/gestures.js` | Compose-pad gesture recogniser (tap, vertical detent steps, horizontal swipe, long press) |
 | `public/app.css` | Styles (dark UI, paper-like score, print CSS) |
 | `public/index.html` | App shell |
@@ -37,7 +37,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 - Martyria mode (pad's bottom-left toggle): the empty slot inserts martyriae instead, and swipes on a martyria cycle its options: the reached pitch (auto) first, then the mode's base notes from `mode-keys.json`, then the rest by distance. A martyria renders as note letter + zero-width root sign (`martyria-rules.json` via `computeMartyria`); an explicit one (`auto:false, noteValue`) sets the pitch
 - Palette is hidden behind the Signs button; supporting neumes (gorgon, klasma) attach to the focused base neume
 - Auto-save to localStorage every 5s (`gorgon-score-v2`). Each score has `metadata.id`
-- Accounts (optional): Cloudflare Access covers only `/login` and `/api/account/*` on gorgon.orthodoxy.au (agora's team, `agora-admin.cloudflareaccess.com`); `ACCESS_AUD` in `wrangler.jsonc` vars, empty = sign-in hidden. Signed in, the open score is also PUT to D1 (`gorgon` database, one row per email + doc id) every 5s when changed. Signing in never replaces anything: the visitor's score joins the account as its own document. A write based on an older version gets 409 and the browser keeps its version as a separate copy
+- Accounts (optional): Gorgon shares agora's Cloudflare Access application (team `agora-admin.cloudflareaccess.com`), which already covers `/admin` and `/api/admin/*` on every *.orthodoxy.au host, so one login works across the domain's tools. Sign in is `/admin?back=<path>`, and the account API lives under `/api/admin/` for that reason. `ACCESS_AUD` (that app's audience tag) is in `wrangler.jsonc` vars; empty = sign-in hidden. Signed in, the open score is also PUT to D1 (`gorgon` database, one row per email + doc id) every 5s when changed. Signing in never replaces anything: the visitor's score joins the account as its own document. A write based on an older version gets 409 and the browser keeps its version as a separate copy
 
 ## License
 

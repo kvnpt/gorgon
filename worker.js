@@ -37,8 +37,8 @@ export default {
     }
 
     // Behind Cloudflare Access (lib/access.js): sign-in and saved documents.
-    if (pathname === '/login') return handleLogin(request, env);
-    if (pathname.startsWith('/api/account/')) return handleAccount(request, env, pathname);
+    if (pathname === '/admin') return handleLogin(request, env);
+    if (pathname.startsWith('/api/admin/')) return handleAccount(request, env, pathname);
 
     if (pathname.startsWith('/api/')) {
       const key = pathname.replace(/\.json$/, '');

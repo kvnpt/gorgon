@@ -37,10 +37,10 @@ app.get('/api/theory/:file', (req, res) => {
 // Accounts need Cloudflare Access and D1, so they exist only on the Worker
 // (worker.js, lib/documents.js). Here the page sees "not set up" and hides
 // Sign in; the editor works as a visitor.
-app.all('/api/account/*', (req, res) => {
+app.all('/api/admin/*', (req, res) => {
   res.status(503).json({ error: 'Sign-in is not set up', configured: false });
 });
-app.get('/login', (req, res) => res.redirect('/'));
+app.get('/admin', (req, res) => res.redirect('/'));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[${new Date().toISOString()}] Gorgon listening on 0.0.0.0:${PORT}`);

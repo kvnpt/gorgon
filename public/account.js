@@ -11,10 +11,10 @@
 // devices at once is not merged either: the server refuses the older write
 // (409), and this browser keeps its version as a separate copy.
 //
-// The server side is lib/documents.js; Access covers /login and
-// /api/account/* only (lib/access.js).
+// The server side is lib/documents.js; Access (agora's application) covers /admin and
+// /api/admin/* only (lib/access.js).
 
-const API = '/api/account/documents';
+const API = '/api/admin/documents';
 const ACCOUNT_KEY = 'gorgon-account';   // who this browser last synced as
 const SYNC_KEY = 'gorgon-sync';         // { [docId]: { base, sent } }
 
@@ -273,7 +273,7 @@ export function initAccount(h) {
   btn.addEventListener('click', () => {
     if (state === 'signed-in') return openSheet();
     hooks.saveLocal();
-    location.href = '/login?back=' + encodeURIComponent(location.pathname + location.search);
+    location.href = '/admin?back=' + encodeURIComponent(location.pathname + location.search);
   });
   const sheet = document.getElementById('account-sheet');
   sheet.addEventListener('click', async (e) => {
