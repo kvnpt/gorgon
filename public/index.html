@@ -70,13 +70,14 @@
 
   <!-- Compose pad: the one-handed editing surface (thumb zone) -->
   <div id="compose">
-    <div id="pad" class="pad" aria-label="Compose pad: swipe up or down to set the note, right to commit, left to go back, tap to repeat">
+    <div id="pad" class="pad" aria-label="Compose pad: swipe up or down to set the note, tap or swipe right to commit, swipe left to go back">
       <div class="pad-glyph" id="pad-glyph"></div>
       <div class="pad-info">
         <span class="pad-value" id="pad-value"></span>
         <span class="pad-note" id="pad-note"></span>
       </div>
       <div class="pad-hint" id="pad-hint"></div>
+      <button type="button" id="pad-mode" class="pad-mode" aria-pressed="false" title="Martyria mode: swipes and taps on an empty slot add martyriae">Mart.</button>
     </div>
     <div class="action-row compose-actions">
       <button id="btn-undo" class="action-btn">Undo</button>

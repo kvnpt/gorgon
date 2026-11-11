@@ -4,7 +4,7 @@
 import { createScore, createNote, createMartyria, createModeKey,
          createBarline, createSectionBreak, createSpacer,
          SBMUFL_TO_NEUME, NEUME_TO_SBMUFL } from './models.js';
-import { analyzeScore } from './analysis.js';
+import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
 
 // ============================================================================
@@ -20,7 +20,7 @@ const categoryMap = {
   quantity: 'charactersOfQuantity',
   quality: 'charactersOfQuality',
   temporal: ['charactersOfTemporalAugmentation', 'charactersOfTemporalDivision', 'charactersOfTempo'],
-  martyria: ['martyriaOfTheNotes', 'martyriaOfTheTones'],
+  martyria: [],   // rendered as whole martyriae by renderMartyriaPalette()
   fthores: 'fthores',
   other: ['signsOfAlteration', 'charactersOfRhythm', 'noteIndicators', 'isonIndicators', 'letters'],
 };
@@ -58,9 +58,35 @@ let analysisResult = [];
 let history = [];
 const MAX_HISTORY = 200;
 
+// The pending symbol sitting in a blank spot (see COMPOSE PAD). It is part
+// of score.elements so it renders and analyses like any symbol, but it is
+// left out of history snapshots and saves until it is committed or changed.
+let placeholderEl = null;
+
+function placeholderIndex() {
+  return placeholderEl ? score.elements.indexOf(placeholderEl) : -1;
+}
+
+// The score as it should be stored: without an untouched placeholder
+function storableScore() {
+  const p = placeholderIndex();
+  if (p < 0) return score;
+  return { ...score, elements: score.elements.filter((_, i) => i !== p) };
+}
+
 // Each snapshot keeps the focus too, so Undo puts you back where you were
 function pushHistory() {
-  history.push(JSON.stringify({ score, selectedIdx, cursorPos }));
+  const p = placeholderIndex();
+  let sel = selectedIdx;
+  let pos = cursorPos;
+  if (p >= 0) {
+    if (sel === p) { sel = -1; pos = p; }
+    else {
+      if (sel > p) sel--;
+      if (pos > p) pos--;
+    }
+  }
+  history.push(JSON.stringify({ score: storableScore(), selectedIdx: sel, cursorPos: pos }));
   if (history.length > MAX_HISTORY) history.shift();
 }
 
@@ -68,9 +94,11 @@ function undo() {
   if (history.length === 0) return;
   const snap = JSON.parse(history.pop());
   score = snap.score;
+  placeholderEl = null;
   cursorPos = Math.min(snap.cursorPos, score.elements.length);
   selectedIdx = snap.selectedIdx < score.elements.length ? snap.selectedIdx : -1;
   editingLyricIdx = -1;
+  if (selectedIdx < 0) enterBlank(cursorPos);
   reanalyze();
   render();
 }
@@ -94,17 +122,71 @@ const modeLabels = {
   8: 'Plagal Mode 4 — Plagios Tetartos',
 };
 
-// Martyria glyph pairs for rendering
-const MARTYRIA_PAIRS = {
-  1: { note: 'martyriaNotePa',    tone: 'modeFirst' },
-  2: { note: 'martyriaNoteVou',   tone: 'modeSecond' },
-  3: { note: 'martyriaNoteGa',    tone: 'modeThird' },
-  4: { note: 'martyriaNoteDi',    tone: 'modeFourth' },
-  5: { note: 'martyriaNoteKe',    tone: 'modePlagalFirst' },
-  6: { note: 'martyriaNoteZo',    tone: 'modePlagalSecond' },
-  7: { note: 'martyriaNoteNiLow', tone: 'modeVarys' },
-  8: { note: 'martyriaNoteNi',    tone: 'modePlagalFourth' },
+// ----------------------------------------------------------------------------
+// Martyria: a note letter with its root sign underneath, both red.
+// The letter comes from the pitch (noteValue -9..11 maps in order onto
+// martyriaNoteZoLow..martyriaNoteKeHigh); the root sign from the scale rules
+// in martyria-rules.json, computed by the analysis engine.
+// ----------------------------------------------------------------------------
+
+const NOTE_ORDER = ['ZoLow', 'NiLow', 'PaLow', 'VouLow', 'GaLow', 'ThiLow', 'KeLow',
+  'Zo', 'Ni', 'Pa', 'Vou', 'Ga', 'Thi', 'Ke',
+  'ZoHigh', 'NiHigh', 'PaHigh', 'VouHigh', 'GaHigh', 'ThiHigh', 'KeHigh'];
+const MIN_NOTE = -9;
+const MAX_NOTE = 11;
+
+function noteNameOf(value) {
+  return NOTE_ORDER[value - MIN_NOTE] || '';
+}
+
+function noteValueOf(name) {
+  const i = NOTE_ORDER.indexOf(name);
+  return i < 0 ? null : i + MIN_NOTE;
+}
+
+// SBMuFL spells Thi as "Di"
+function martyriaNoteGlyph(value) {
+  const name = noteNameOf(value);
+  return name ? 'martyriaNote' + name.replace('Thi', 'Di') : null;
+}
+
+const ROOT_SIGN_GLYPHS = {
+  Delta: 'martyriaDeltaBelow',
+  Alpha: 'martyriaAlphaBelow',
+  Legetos: 'martyriaLegetosBelow',
+  Nana: 'martyriaNanaBelow',
+  DeltaDotted: 'martyriaDeltaDottedBelow',
+  AlphaDotted: 'martyriaAlphaDottedBelow',
+  Varys: 'martyriaZoBelow',
+  Zygos: 'martyriaZygosBelow',
+  Squiggle: 'martyriaHardChromaticPaBelow',
+  Tilt: 'martyriaHardChromaticDiBelow',
+  SoftChromaticPaRootSign: 'martyriaSoftChromaticKeBelow',
+  SoftChromaticSquiggle: 'martyriaSoftChromaticDiBelow',
 };
+
+function rootSignGlyph(rootSign) {
+  if (!rootSign) return null;
+  return ROOT_SIGN_GLYPHS[rootSign] || ROOT_SIGN_GLYPHS[rootSign.replace(/Low$/, '')] || null;
+}
+
+function glyphChar(name) {
+  return name && glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '';
+}
+
+// The two characters of a martyria, from its analysis entry
+function martyriaChars(analysis) {
+  if (!analysis || typeof analysis.noteValue !== 'number') return null;
+  return {
+    note: glyphChar(martyriaNoteGlyph(analysis.noteValue)),
+    root: glyphChar(rootSignGlyph(analysis.autoMartyria?.rootSign)),
+  };
+}
+
+function createMartyriaOn(noteValue) {
+  return { type: 'martyria', auto: false, noteValue };
+}
+
 
 // ============================================================================
 // SUPPORT SYMBOL PLACEMENT
@@ -141,6 +223,10 @@ function getGlyphsForCategory(cat) {
 
 function renderPalette() {
   const grid = document.getElementById('palette-grid');
+  if (currentCategory === 'martyria') {
+    renderMartyriaPalette(grid);
+    return;
+  }
   const glyphs = getGlyphsForCategory(currentCategory);
 
   // Get analysis state at cursor for theory-aware filtering
@@ -169,6 +255,20 @@ function renderPalette() {
     const cls = `palette-btn${invalid ? ' invalid' : ''}`;
     return `<button class="${cls}" data-glyph="${g.name}" data-cp="${g.codepoint}" title="${label}"${invalid ? ' disabled' : ''}>
       <span class="glyph">${char}</span>
+      <span class="glyph-name">${label}</span>
+    </button>`;
+  }).join('');
+}
+
+// The Martyria tab offers whole martyriae (note letter + root sign), in the
+// same order as the compose pad: the reached pitch, the mode's bases, the rest.
+function renderMartyriaPalette(grid) {
+  const pos = selectedIdx >= 0 ? selectedIdx : cursorPos;
+  grid.innerHTML = martyriaOptions(pos).map(opt => {
+    const name = noteNameOf(opt.value);
+    const label = opt.auto ? `${name} (auto)` : name;
+    return `<button class="palette-btn" data-mvalue="${opt.value}" data-mauto="${opt.auto ? 1 : 0}" title="Martyria ${label}">
+      <span class="glyph martyria">${optionChars(opt, pos)}</span>
       <span class="glyph-name">${label}</span>
     </button>`;
   }).join('');
@@ -227,12 +327,28 @@ function initPaletteGrid() {
     const btn = e.target.closest('.palette-btn');
     if (!btn || btn.disabled) return;
 
+    // Martyria tab: replace the focused martyria, or insert one at the cursor
+    if (btn.dataset.mvalue !== undefined) {
+      const opt = { value: Number(btn.dataset.mvalue), auto: btn.dataset.mauto === '1' };
+      if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'martyria') {
+        pushHistory();
+        score.elements[selectedIdx] = martyriaFromOption(opt);
+        placeholderEl = null;
+        refresh();
+      } else {
+        insertElement(martyriaFromOption(opt));
+      }
+      return;
+    }
+
     const glyphName = btn.dataset.glyph;
     const cp = btn.dataset.cp;
 
     // If a neume is selected and this is a support category, add as modifier
-    if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
+    if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note'
+        && ['temporal', 'quality', 'fthores'].includes(currentCategory)) {
       const el = score.elements[selectedIdx];
+      if (el === placeholderEl) keepPlaceholder();
       if (currentCategory === 'temporal') {
         pushHistory();
         // Map to timeNeume or gorgonNeume
@@ -263,23 +379,13 @@ function initPaletteGrid() {
     }
 
     // Insert new element at cursor
-    pushHistory();
-    if (currentCategory === 'martyria') {
-      // Insert a martyria element
-      score.elements.splice(cursorPos, 0, createMartyria());
-    } else {
-      // Map SBMuFL glyph name to Neanes quantitative neume name
-      const neume = SBMUFL_TO_NEUME[glyphName] || glyphName;
-      const el = createNote(neume);
-      // Store the SBMuFL glyph name + codepoint for rendering
-      el._glyph = glyphName;
-      el._codepoint = cp;
-      score.elements.splice(cursorPos, 0, el);
-    }
-    cursorPos++;
-    selectedIdx = cursorPos - 1;
-    reanalyze();
-    render();
+    // Map SBMuFL glyph name to Neanes quantitative neume name
+    const neume = SBMUFL_TO_NEUME[glyphName] || glyphName;
+    const el = createNote(neume);
+    // Store the SBMuFL glyph name + codepoint for rendering
+    el._glyph = glyphName;
+    el._codepoint = cp;
+    insertElement(el);
   });
 }
 
@@ -403,7 +509,8 @@ function noteColHtml(el, idx, analysis) {
   const char = getNeumeChar(el);
   const isSelected = idx === selectedIdx;
   const hasWarning = analysis?.warnings?.length > 0;
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}`;
+  const pending = el === placeholderEl ? ' placeholder' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -428,23 +535,12 @@ function noteColHtml(el, idx, analysis) {
 
 function martyriaColHtml(el, idx, analysis) {
   const isSelected = idx === selectedIdx;
-  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}`;
-  const mode = score.modeKey?.mode || 1;
-
-  // Use auto-computed martyria from analysis if available
-  const pair = MARTYRIA_PAIRS[mode];
-  if (pair && glyphnames[pair.note] && glyphnames[pair.tone]) {
-    const noteChar = codepointToChar(glyphnames[pair.note].codepoint);
-    const toneChar = codepointToChar(glyphnames[pair.tone].codepoint);
-    return `<div class="${cls}" data-idx="${idx}">
-      <span class="martyria-note">${noteChar}</span>
-      <span class="martyria-tone">${toneChar}</span>
-      <span class="lyric">&nbsp;</span>
-    </div>`;
-  }
-
-  return `<div class="${cls}" data-idx="${idx}">
-    <span class="neume" style="font-size:1.2rem; color:var(--neume-red);">[M]</span>
+  const pending = el === placeholderEl ? ' placeholder' : '';
+  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}${pending}`;
+  const chars = martyriaChars(analysis);
+  const title = esc(`Martyria ${analysis?.noteName || ''}${el.auto === false ? '' : ' (auto)'}`);
+  return `<div class="${cls}" data-idx="${idx}" title="${title}">
+    <span class="martyria">${chars ? chars.note + chars.root : '?'}</span>
     <span class="lyric">&nbsp;</span>
   </div>`;
 }
@@ -470,7 +566,13 @@ function bindScoreEvents() {
     col.addEventListener('click', (e) => {
       if (e.target.classList.contains('lyric-input')) return;
       e.stopPropagation();
-      const idx = parseInt(col.dataset.idx);
+      let idx = parseInt(col.dataset.idx);
+      // Leaving a blank spot drops its untouched placeholder
+      if (score.elements[idx] !== placeholderEl) {
+        const target = score.elements[idx];
+        dropPlaceholder();
+        idx = score.elements.indexOf(target);
+      }
       // Tapping the syllable line of a note goes straight to lyric editing
       const tappedLyric = e.target.classList.contains('lyric');
       if (tappedLyric && score.elements[idx]?.type === 'note') {
@@ -494,10 +596,12 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
     ip.addEventListener('click', (e) => {
       e.stopPropagation();
-      cursorPos = parseInt(ip.dataset.insert);
-      selectedIdx = -1;
-      editingLyricIdx = -1;
-      render();
+      let pos = parseInt(ip.dataset.insert);
+      const p = placeholderIndex();
+      dropPlaceholder();
+      if (p >= 0 && pos > p) pos--;
+      enterBlank(pos);
+      refresh();
     });
   });
 
@@ -506,10 +610,9 @@ function bindScoreEvents() {
   const content = scoreEl.querySelector('.score-content');
   content.addEventListener('click', (e) => {
     if (e.target !== content) return;
-    cursorPos = score.elements.length;
-    selectedIdx = -1;
-    editingLyricIdx = -1;
-    render();
+    dropPlaceholder();
+    enterBlank(score.elements.length);
+    refresh();
   });
 
   scoreEl.querySelectorAll('.lyric-input').forEach(input => {
@@ -519,6 +622,7 @@ function bindScoreEvents() {
     input.addEventListener('input', () => {
       // Snapshot once per edit, before the change, so Undo restores the old lyric
       if (!edited) { pushHistory(); edited = true; }
+      if (score.elements[idx] === placeholderEl) keepPlaceholder();
       score.elements[idx].lyric = input.value;
       input.style.width = Math.max(3, input.value.length + 1) + 'ch';
     });
@@ -555,7 +659,18 @@ function bindScoreEvents() {
   });
 }
 
+// Insert a symbol from the Signs drawer at the focus. On a blank spot's
+// pending symbol, the new one takes its place.
+function insertElement(el) {
+  dropPlaceholder();
+  pushHistory();
+  score.elements.splice(cursorPos, 0, el);
+  focusSymbol(cursorPos);
+  refresh();
+}
+
 function startLyricEdit(idx) {
+  if (score.elements[idx] === placeholderEl) placeholderEl = null;
   selectedIdx = idx;
   cursorPos = idx + 1;
   editingLyricIdx = idx;
@@ -564,6 +679,7 @@ function startLyricEdit(idx) {
 
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
 function moveLeft() {
+  dropPlaceholder();
   if (selectedIdx > 0) {
     selectedIdx--;
     cursorPos = selectedIdx + 1;
@@ -581,6 +697,7 @@ function moveLeft() {
 }
 
 function moveRight() {
+  if (selectedIdx >= 0 && score.elements[selectedIdx] === placeholderEl) placeholderEl = null;
   if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
     selectedIdx++;
     cursorPos = selectedIdx + 1;
@@ -627,16 +744,15 @@ function initToolbar() {
   });
 
   document.getElementById('btn-new').addEventListener('click', () => {
-    if (score.elements.length > 0 && !confirm('Start a new score? Current work will be lost.')) return;
+    if (storableScore().elements.length > 0 && !confirm('Start a new score? Current work will be lost.')) return;
     score = createScore();
-    cursorPos = 0;
-    selectedIdx = -1;
-    editingLyricIdx = -1;
+    placeholderEl = null;
     history = [];
     analysisResult = [];
     document.getElementById('score-title').value = '';
     document.getElementById('score-mode').value = '1';
-    render();
+    enterBlank(0);
+    refresh();
   });
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
@@ -658,29 +774,30 @@ function initToolbar() {
   });
 
   document.getElementById('btn-space').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createSpacer());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createSpacer());
   });
 
   document.getElementById('btn-newline').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createSectionBreak());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createSectionBreak());
   });
 
   document.getElementById('btn-delete').addEventListener('click', () => {
+    // On a blank spot's placeholder, Del works like backspace: it removes
+    // the symbol before it and keeps the placeholder where it is.
+    const p = placeholderIndex();
+    if (p >= 0 && selectedIdx === p) {
+      if (p === 0) return;
+      pushHistory();
+      score.elements.splice(p - 1, 1);
+      focusSymbol(p - 1);
+      refresh();
+      return;
+    }
     if (selectedIdx >= 0) {
       pushHistory();
       score.elements.splice(selectedIdx, 1);
-      cursorPos = Math.min(selectedIdx, score.elements.length);
-      selectedIdx = -1;
-      reanalyze();
-      render();
+      enterBlank(Math.min(selectedIdx, score.elements.length));
+      refresh();
     } else if (cursorPos > 0) {
       pushHistory();
       cursorPos--;
@@ -693,19 +810,11 @@ function initToolbar() {
   document.getElementById('btn-undo').addEventListener('click', undo);
 
   document.getElementById('btn-barline').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createBarline());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createBarline());
   });
 
   document.getElementById('btn-martyria').addEventListener('click', () => {
-    pushHistory();
-    score.elements.splice(cursorPos, 0, createMartyria());
-    cursorPos++;
-    reanalyze();
-    render();
+    insertElement(createMartyria());
   });
 }
 
@@ -714,15 +823,21 @@ function initToolbar() {
 // ============================================================================
 //
 // Focus is either a symbol (selectedIdx >= 0) or an empty slot at cursorPos
-// (selectedIdx < 0). Notes are only ever inserted on an empty slot.
-//   Empty slot: swipe up/down inserts Ison, each further step climbs or
-//               descends the ladder; tap inserts a repeat of the previous note.
-//   Symbol:     swipe up/down steps its value one rung per detent.
-//   Swipe right commits the symbol and moves focus on (to the next symbol,
-//   or to an empty slot after the last one). Swipe left moves focus back.
+// (selectedIdx < 0). Symbols are only ever inserted on an empty slot.
+// One vertical swipe is always exactly one increment.
+//   Empty slot: swipe up/down inserts Ison (or, in martyria mode, the first
+//               martyria option); tap inserts a repeat of the previous note
+//               (or the first martyria option).
+//   Note:       swipe up/down steps its interval one rung.
+//   Martyria:   swipe up/down moves through the martyria options.
+//   Tap on a symbol, or swipe right, commits it and moves focus on (to the
+//   next symbol, or to an empty slot after the last one). Swipe left goes back.
 
 const MIN_VALUE = -12;
 const MAX_VALUE = 14;
+
+// Martyria mode: toggled from the pad's bottom-left button
+let martyriaMode = false;
 
 function intervalOf(el) {
   return theory.neumeValues?.neumeValues?.[el.quantitativeNeume] ?? 0;
@@ -758,6 +873,73 @@ function previousNote(beforeIdx) {
   return null;
 }
 
+// ----------------------------------------------------------------------------
+// Martyria options at a position, most likely first:
+//   1. the pitch the melody has reached (an auto martyria), if any notes precede
+//   2. the base notes of the current mode's styles (mode-keys.json templates),
+//      the selected template's first
+//   3. every other note, nearest to the first option first
+// ----------------------------------------------------------------------------
+function martyriaOptions(pos) {
+  const options = [];
+  const seen = new Set();
+  const add = (value, auto) => {
+    if (value === null || value < MIN_NOTE || value > MAX_NOTE || seen.has(value)) return;
+    seen.add(value);
+    options.push({ value, auto });
+  };
+
+  if (previousNote(pos)) {
+    let before = null;
+    for (let i = pos - 1; i >= 0 && before === null; i--) {
+      if (typeof analysisResult[i]?.noteValue === 'number') before = analysisResult[i].noteValue;
+    }
+    add(before, true);
+  }
+
+  const mode = score.modeKey?.mode || 1;
+  const templates = theory.modeKeys?.templates || [];
+  const current = templates.find(t => t.id === score.modeKey?.templateId);
+  if (current) add(noteValueOf(current.scaleNote), false);
+  else add(noteValueOf(score.modeKey?.scaleNote), false);
+  for (const t of templates) {
+    if (t.mode === mode) add(noteValueOf(t.scaleNote), false);
+  }
+
+  const anchor = options.length ? options[0].value : 0;
+  const rest = [];
+  for (let v = MIN_NOTE; v <= MAX_NOTE; v++) rest.push(v);
+  rest.sort((a, b) => Math.abs(a - anchor) - Math.abs(b - anchor) || b - a);
+  for (const v of rest) add(v, false);
+  return options;
+}
+
+function martyriaFromOption(opt) {
+  return opt.auto ? createMartyria() : createMartyriaOn(opt.value);
+}
+
+function scaleAt(pos) {
+  for (let i = pos - 1; i >= 0; i--) {
+    if (analysisResult[i]?.currentScale) return analysisResult[i].currentScale;
+  }
+  return score.modeKey?.scale || 'Diatonic';
+}
+
+// Preview characters for an option (before it is in the score)
+function optionChars(opt, pos) {
+  const m = computeMartyria(opt.value, scaleAt(pos), theory.martyriaRules);
+  return glyphChar(martyriaNoteGlyph(opt.value)) + glyphChar(rootSignGlyph(m?.rootSign));
+}
+
+function optionIndexOf(el, idx, options) {
+  const value = analysisResult[idx]?.noteValue;
+  if (el.auto !== false) {
+    const i = options.findIndex(o => o.auto);
+    if (i >= 0) return i;
+  }
+  return options.findIndex(o => o.value === value);
+}
+
 function focusSymbol(idx) {
   selectedIdx = idx;
   cursorPos = idx + 1;
@@ -770,6 +952,41 @@ function focusEmptySlot(pos) {
   editingLyricIdx = -1;
 }
 
+// The symbol a blank spot starts with: Ison, or in martyria mode the
+// most likely martyria
+function blankSymbol(pos) {
+  return martyriaMode ? martyriaFromOption(martyriaOptions(pos)[0]) : createNote('Ison');
+}
+
+// Moving into a blank spot puts a pending symbol there and focuses it.
+// It stays pending (dimmed, not saved) until it is changed or committed;
+// leaving it any other way removes it again.
+function enterBlank(pos) {
+  dropPlaceholder();
+  const el = blankSymbol(pos);
+  score.elements.splice(pos, 0, el);
+  placeholderEl = el;
+  focusSymbol(pos);
+}
+
+// Remove an untouched placeholder, leaving focus on the empty slot it held
+function dropPlaceholder() {
+  const p = placeholderIndex();
+  placeholderEl = null;
+  if (p < 0) return;
+  score.elements.splice(p, 1);
+  if (selectedIdx === p) focusEmptySlot(p);
+  else {
+    if (selectedIdx > p) selectedIdx--;
+    if (cursorPos > p) cursorPos--;
+  }
+}
+
+// The placeholder becomes a real symbol once it is changed or committed
+function keepPlaceholder() {
+  placeholderEl = null;
+}
+
 function haptic() {
   try { navigator.vibrate?.(8); } catch (e) { /* unsupported */ }
 }
@@ -780,81 +997,114 @@ function refresh() {
   scrollSelectionIntoView();
 }
 
-// State held for the duration of one vertical drag
-let drag = null;
+// Insert on the empty slot: a note (Ison or a repeat) or a martyria
+function insertOnEmptySlot(kind) {
+  pushHistory();
+  let el;
+  if (martyriaMode) {
+    el = martyriaFromOption(martyriaOptions(cursorPos)[0]);
+  } else if (kind === 'repeat') {
+    const prev = previousNote(cursorPos);
+    el = createNote(prev ? prev.quantitativeNeume : 'Ison');
+  } else {
+    el = createNote('Ison');
+  }
+  score.elements.splice(cursorPos, 0, el);
+  focusSymbol(cursorPos);
+}
+
+// Commit the focused symbol and move on: to the next symbol, or into a
+// new blank spot (with its Ison) after the last one
+function commitAndAdvance() {
+  if (selectedIdx < 0) {
+    // Empty slot: nothing to commit, but step onto the next symbol if any
+    if (cursorPos < score.elements.length) focusSymbol(cursorPos);
+    else return false;
+  } else {
+    if (score.elements[selectedIdx] === placeholderEl) {
+      pushHistory();          // committing the pending symbol is an edit
+      keepPlaceholder();
+    }
+    if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
+    else enterBlank(score.elements.length);
+  }
+  return true;
+}
+
+function setMartyriaMode(on) {
+  martyriaMode = on;
+  const btn = document.getElementById('pad-mode');
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', String(on));
+  // A pending symbol switches with the mode (Ison <-> martyria)
+  const p = placeholderIndex();
+  if (p >= 0) {
+    placeholderEl = null;
+    score.elements.splice(p, 1);
+    const el = blankSymbol(p);
+    score.elements.splice(p, 0, el);
+    placeholderEl = el;
+    if (selectedIdx === p) focusSymbol(p);
+    refresh();
+  } else {
+    renderPad();
+  }
+}
 
 function initComposePad() {
   const pad = document.getElementById('pad');
+
+  // Bottom-left toggle on the pad; it must not start a pad gesture
+  const modeBtn = document.getElementById('pad-mode');
+  modeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  modeBtn.addEventListener('click', () => { setMartyriaMode(!martyriaMode); haptic(); });
+
   attachPad(pad, {
     onTap() {
-      if (selectedIdx >= 0) return;            // already on a symbol
-      const prev = previousNote(cursorPos);
-      pushHistory();
-      const el = createNote(prev ? prev.quantitativeNeume : 'Ison');
-      score.elements.splice(cursorPos, 0, el);
-      focusSymbol(cursorPos);
-      haptic();
-      refresh();
-    },
-
-    onDragStart() {
-      const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
-      if (el && el.type !== 'note') { drag = null; return; }
-      pushHistory();
-      drag = el
-        ? { mode: 'symbol', idx: selectedIdx, base: intervalOf(el), family: familyOf(el) }
-        : { mode: 'empty', pos: cursorPos, idx: -1 };
-    },
-
-    onStep(steps) {
-      if (!drag) return;
-      if (drag.mode === 'symbol') {
-        const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, drag.base + steps));
-        setNoteValue(score.elements[drag.idx], value, drag.family);
+      if (selectedIdx >= 0) {
+        if (!commitAndAdvance()) return;
       } else {
-        // Empty slot: the first step gives Ison, then one rung per step
-        if (steps === 0) {
-          if (drag.idx >= 0) {
-            score.elements.splice(drag.idx, 1);
-            drag.idx = -1;
-            focusEmptySlot(drag.pos);
-          }
-        } else {
-          const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, Math.sign(steps) * (Math.abs(steps) - 1)));
-          if (drag.idx < 0) {
-            score.elements.splice(drag.pos, 0, createNote('Ison'));
-            drag.idx = drag.pos;
-            focusSymbol(drag.idx);
-          }
-          setNoteValue(score.elements[drag.idx], value, null);
-        }
+        insertOnEmptySlot('repeat');
       }
       haptic();
       refresh();
     },
 
-    onDragEnd(steps) {
-      // A drag that came back to where it started changed nothing
-      if (drag && steps === 0) history.pop();
-      drag = null;
+    onVertical(dir) {
+      const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+      if (!el) {
+        insertOnEmptySlot('ison');     // first swipe up or down gives Ison
+      } else if (el.type === 'note') {
+        pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
+        const value = Math.max(MIN_VALUE, Math.min(MAX_VALUE, intervalOf(el) + dir));
+        setNoteValue(el, value, familyOf(el));
+      } else if (el.type === 'martyria') {
+        const options = martyriaOptions(selectedIdx);
+        const i = optionIndexOf(el, selectedIdx, options);
+        const next = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + dir));
+        if (next === i) return;
+        pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
+        score.elements[selectedIdx] = martyriaFromOption(options[next]);
+      } else {
+        return;
+      }
+      haptic();
+      refresh();
     },
 
     onSwipe(dir) {
       if (dir === 'right') {
-        if (selectedIdx < 0) {
-          // Empty slot: nothing to commit, but step onto the next symbol if any
-          if (cursorPos < score.elements.length) focusSymbol(cursorPos);
-          else return;
-        } else if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
-        else focusEmptySlot(score.elements.length);
+        if (!commitAndAdvance()) return;
       } else {
+        dropPlaceholder();
         if (selectedIdx > 0) focusSymbol(selectedIdx - 1);
         else if (selectedIdx < 0 && cursorPos > 0) focusSymbol(cursorPos - 1);
-        else return;
+        else { refresh(); return; }
       }
       haptic();
-      render();
-      scrollSelectionIntoView();
+      refresh();
     },
   });
 }
@@ -866,31 +1116,53 @@ function renderPad() {
   const hintEl = document.getElementById('pad-hint');
   const pad = document.getElementById('pad');
   const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  pad.classList.toggle('martyria-mode', martyriaMode);
+  glyphEl.classList.remove('martyria');
 
   if (el && el.type === 'note') {
     const v = intervalOf(el);
     const a = analysisResult[selectedIdx];
     pad.classList.remove('empty');
     glyphEl.textContent = getNeumeChar(el);
-    valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `\u2212${-v}` : '0';
+    valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
-    hintEl.textContent = 'Swipe \u2195 to change \u00b7 \u2192 to commit';
+    hintEl.textContent = el === placeholderEl
+      ? 'New note · Swipe ↕ to change · Tap to keep Ison'
+      : 'Swipe ↕ to change · Tap to commit';
+  } else if (el && el.type === 'martyria') {
+    const a = analysisResult[selectedIdx];
+    const chars = martyriaChars(a);
+    const options = martyriaOptions(selectedIdx);
+    const i = optionIndexOf(el, selectedIdx, options);
+    pad.classList.remove('empty');
+    glyphEl.classList.add('martyria');
+    glyphEl.textContent = chars ? chars.note + chars.root : '';
+    valueEl.textContent = el.auto === false ? 'Martyria' : 'Martyria (auto)';
+    noteEl.textContent = a?.noteName || '';
+    noteEl.classList.toggle('warn', a?.warnings?.length > 0);
+    const up = options[i + 1] ? `↑ ${noteNameOf(options[i + 1].value)}` : '';
+    const down = i > 0 ? `↓ ${noteNameOf(options[i - 1].value)}` : '';
+    hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el) {
     pad.classList.remove('empty');
     glyphEl.textContent = '';
     valueEl.textContent = el.type;
     noteEl.textContent = '';
-    hintEl.textContent = '\u2192 next \u00b7 \u2190 back';
+    hintEl.textContent = 'Tap or → next · ← back';
   } else {
     pad.classList.add('empty');
     glyphEl.textContent = '';
     valueEl.textContent = '';
     noteEl.textContent = '';
-    const prev = previousNote(cursorPos);
-    hintEl.textContent = prev
-      ? 'Swipe \u2195 for a new note \u00b7 Tap to repeat'
-      : 'Swipe up or down to start with Ison';
+    if (martyriaMode) {
+      const first = martyriaOptions(cursorPos)[0];
+      hintEl.textContent = `Swipe or tap for a martyria (${noteNameOf(first.value)} first)`;
+    } else {
+      hintEl.textContent = previousNote(cursorPos)
+        ? 'Swipe ↕ for a new note · Tap to repeat'
+        : 'Swipe up or down to start with Ison';
+    }
   }
 }
 
@@ -929,7 +1201,7 @@ function initKeyboard() {
 
 function saveToLocal() {
   try {
-    localStorage.setItem('gorgon-score-v2', JSON.stringify(score));
+    localStorage.setItem('gorgon-score-v2', JSON.stringify(storableScore()));
   } catch (e) { /* storage full */ }
 }
 
@@ -991,8 +1263,8 @@ async function init() {
   initToolbar();
   initKeyboard();
   initComposePad();
-  // Open on the empty slot at the end of the score
-  focusEmptySlot(score.elements.length);
+  // Open on a blank spot at the end of the score
+  enterBlank(score.elements.length);
   reanalyze();
   render();
 }
