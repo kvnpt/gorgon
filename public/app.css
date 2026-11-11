@@ -7,72 +7,76 @@
 }
 
 /*
- * Theme: clean white UI, black hairlines, orange accent.
- * The dark variant follows the device setting (prefers-color-scheme).
+ * Theme, after agora (orthodoxy.au): white, framed in hairlines rather than
+ * lifted on shadows; pills for actions, filled with the text colour when on;
+ * one orange accent for where you are (cursor, focus, the active tab).
+ * The dark variant follows the device setting: agora's charcoal, not black.
  * Print always uses the light score colours (see @media print).
  */
 :root {
   color-scheme: light dark;
-  --hair: 1px;                    /* hairline width; 0.5px on retina screens */
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface2: #ffffff;
-  --border: #000000;              /* black hairline */
-  --text: #000000;
-  --text2: #6b6b6b;
+  --surface2: #f5f5f7;            /* a quiet grey fill (agora --card-2) */
+  --text: #0b0b0d;
+  --text2: #6b6b73;
+  --text3: #a0a0a8;
+  --hair: rgba(0, 0, 0, 0.12);    /* the hairline between regions */
+  --line: rgba(60, 60, 67, 0.14);
+  --border: #d0d0d0;              /* a pill's ring */
   --accent: #f26a00;              /* orange */
   --accent2: #e05e00;             /* orange for text on white */
   --on-accent: #ffffff;
   --accent-soft: rgba(242, 106, 0, 0.10);
   --accent-mid: rgba(242, 106, 0, 0.30);
-  --danger: #d0021b;
-  --danger-strong: #b00016;
+  --danger: #dc3545;
   --warn: #c98a00;
   --warn-soft: rgba(201, 138, 0, 0.12);
   --score-bg: #ffffff;
-  --score-text: #000000;
-  --score-muted: #666666;
+  --score-text: #0b0b0d;
+  --score-muted: #6b6b73;
   --score-faint: rgba(0, 0, 0, 0.08);
   --score-rule: rgba(0, 0, 0, 0.15);
   --score-tint: rgba(0, 0, 0, 0.04);
   --neume-color: #000000;
   --neume-red: #cc0000;           /* traditional red: supporting signs, martyriae */
-  --lyric-color: #000000;
+  --lyric-color: #0b0b0d;
   --cursor-color: var(--accent);
   --selected: rgba(242, 106, 0, 0.16);
-}
-
-@media (min-resolution: 2dppx) {
-  :root { --hair: 0.5px; }
+  --shadow: 0 0 0 1px var(--hair);
+  --radius: 12px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #000000;
-    --surface: #000000;
-    --surface2: #111111;
-    --border: rgba(255, 255, 255, 0.6);
-    --text: #ffffff;
-    --text2: #9a9a9a;
-    --accent: #ff7a1a;
-    --accent2: #ff8a33;
-    --on-accent: #000000;
-    --accent-soft: rgba(255, 122, 26, 0.14);
-    --accent-mid: rgba(255, 122, 26, 0.35);
-    --danger: #ff5a5f;
-    --danger-strong: #ff3b41;
-    --warn: #f5c542;
-    --warn-soft: rgba(245, 197, 66, 0.14);
-    --score-bg: #0b0b0b;
-    --score-text: #f2f2f2;
-    --score-muted: #a0a0a0;
+    --bg: #20232a;
+    --surface: #20232a;
+    --surface2: #30333b;
+    --text: #f4f4f6;
+    --text2: #a1a1aa;
+    --text3: #6f6f78;
+    --hair: rgba(255, 255, 255, 0.12);
+    --line: rgba(255, 255, 255, 0.10);
+    --border: #6e7280;
+    --accent: #ff8a3d;
+    --accent2: #ff9a55;
+    --on-accent: #1a0c00;
+    --accent-soft: rgba(255, 138, 61, 0.14);
+    --accent-mid: rgba(255, 138, 61, 0.35);
+    --danger: #f4677a;
+    --warn: #e3b86a;
+    --warn-soft: rgba(227, 184, 106, 0.14);
+    --score-bg: #272a32;
+    --score-text: #f4f4f6;
+    --score-muted: #a1a1aa;
     --score-faint: rgba(255, 255, 255, 0.12);
     --score-rule: rgba(255, 255, 255, 0.18);
     --score-tint: rgba(255, 255, 255, 0.05);
-    --neume-color: #f2f2f2;
-    --neume-red: #ff5c52;
-    --lyric-color: #f2f2f2;
-    --selected: rgba(255, 122, 26, 0.22);
+    --neume-color: #f4f4f6;
+    --neume-red: #ff6b61;
+    --lyric-color: #f4f4f6;
+    --selected: rgba(255, 138, 61, 0.22);
   }
 }
 
@@ -95,7 +99,7 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--sans);
   height: 100vh;
   height: 100dvh;
   height: var(--app-height, 100dvh);
@@ -128,32 +132,37 @@ body.vv-pinned {
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   background: var(--surface);
-  border-bottom: var(--hair) solid var(--border);
+  border-bottom: 1px solid var(--hair);
   flex-shrink: 0;
 }
 
 #header h1 {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 800;
   color: var(--accent);
-  letter-spacing: 0.05em;
+  letter-spacing: -0.015em;
 }
 
 .header-right { display: flex; gap: 0.5rem; }
 
 .header-btn {
-  background: var(--surface2);
-  color: var(--text);
-  border: var(--hair) solid var(--border);
-  padding: 0.35rem 0.9rem;
-  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
   min-width: 44px;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  padding: 5px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: 600 13px/1.2 var(--sans);
+  letter-spacing: .02em;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.header-btn:active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.header-btn:active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
 /* Toolbar */
 #toolbar {
@@ -161,7 +170,7 @@ body.vv-pinned {
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   background: var(--surface);
-  border-bottom: var(--hair) solid var(--border);
+  border-bottom: 1px solid var(--hair);
   flex-shrink: 0;
 }
 
@@ -173,19 +182,25 @@ body.vv-pinned {
 }
 
 .toolbar-label {
-  font-size: 0.7rem;
+  font-size: 11px;
+  font-weight: 650;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: .06em;
   color: var(--text2);
 }
+
+#score-title:focus, #score-mode:focus { outline: none; border-color: var(--accent); }
 
 #score-title {
   background: var(--surface2);
   color: var(--text);
-  border: var(--hair) solid var(--border);
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 36px;
+  padding: 6px 12px;
+  font: 15px/1.3 var(--sans);
+  -webkit-appearance: none;
+  appearance: none;
   flex: 1;
   min-width: 100px;
 }
@@ -193,10 +208,18 @@ body.vv-pinned {
 #score-mode {
   background: var(--surface2);
   color: var(--text);
-  border: var(--hair) solid var(--border);
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 36px;
+  padding: 6px 12px;
+  font: 15px/1.3 var(--sans);
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238b8f98' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5 8 10.5 12 6.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
 }
 
 /* Score Area */
@@ -219,19 +242,18 @@ body.vv-pinned {
   max-width: 700px;
   min-height: 900px;
   padding: 2rem 1.5rem;
-  border-radius: 4px;
-  border: var(--hair) solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   position: relative;
 }
 
 /* Score title display */
 .score-title {
   text-align: center;
-  font-size: 1.3rem;
-  font-weight: 700;
+  font: 700 21px/1.25 'Georgia', serif;
+  letter-spacing: -.01em;
   color: var(--score-text);
   margin-bottom: 0.25rem;
-  font-family: 'Georgia', serif;
 }
 
 .score-mode-label {
@@ -329,7 +351,7 @@ body.vv-pinned {
   color: var(--lyric-color);
   background: var(--accent-soft);
   border: none;
-  border-bottom: var(--hair) solid var(--accent);
+  border-bottom: 1px solid var(--accent);
   text-align: center;
   width: 3ch;
   min-width: 3rem;
@@ -462,7 +484,7 @@ body.vv-pinned {
   border-radius: 4px;
   font-size: 0.8rem;
   color: var(--score-muted);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--sans);
 }
 
 .analysis-note {
@@ -492,7 +514,7 @@ body.vv-pinned {
 }
 
 .palette-btn.invalid:active {
-  background: var(--surface2);
+  background: var(--surface);
 }
 
 @keyframes blink {
@@ -503,7 +525,7 @@ body.vv-pinned {
 #palette {
   flex-shrink: 0;
   background: var(--surface);
-  border-top: var(--hair) solid var(--border);
+  border-top: 1px solid var(--hair);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
@@ -511,7 +533,7 @@ body.vv-pinned {
 /* Tab row scrolls sideways; fades at the edges show more tabs are there */
 .palette-tabs-wrap {
   position: relative;
-  border-bottom: var(--hair) solid var(--border);
+  border-bottom: 1px solid var(--hair);
 }
 
 .palette-tabs-wrap::before,
@@ -567,9 +589,9 @@ body.keyboard-open #compose { display: none; }
   background: none;
   color: var(--text2);
   border: none;
-  padding: 0.5rem 0.9rem;
+  padding: 0 14px;
   min-height: 44px;
-  font-size: 0.75rem;
+  font: 500 12px/1 var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -586,17 +608,18 @@ body.keyboard-open #compose { display: none; }
 .palette-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
-  gap: 3px;
-  padding: 0.4rem;
+  gap: 6px;
+  padding: 8px;
   max-height: 10.5rem;
   overflow-y: auto;
 }
 
 .palette-btn {
-  background: var(--surface2);
-  border: var(--hair) solid var(--border);
-  border-radius: 4px;
-  padding: 0.3rem;
+  background: var(--surface);
+  border: none;
+  box-shadow: var(--shadow);
+  border-radius: 10px;
+  padding: 0.35rem 0.25rem;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -604,11 +627,11 @@ body.keyboard-open #compose { display: none; }
   justify-content: flex-start;
   gap: 0.15rem;
   min-height: 4.6rem;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .palette-btn:active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--text);
 }
 
 .palette-btn .glyph {
@@ -619,7 +642,7 @@ body.keyboard-open #compose { display: none; }
 }
 
 .palette-btn:active .glyph {
-  color: var(--on-accent);
+  color: var(--bg);
 }
 
 .palette-btn .glyph-name {
@@ -639,41 +662,43 @@ body.keyboard-open #compose { display: none; }
 .palette-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.4rem;
-  padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
-  border-top: var(--hair) solid var(--border);
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--hair);
 }
 
 .action-row {
   display: flex;
-  gap: 0.3rem;
+  gap: 6px;
 }
 
 .action-btn {
   flex: 1;
-  background: var(--surface2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
   color: var(--text);
-  border: var(--hair) solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   padding: 0.4rem 0.2rem;
   min-height: 44px;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  font: 600 13px/1.2 var(--sans);
+  letter-spacing: .02em;
   cursor: pointer;
   white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.action-btn:active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.action-btn:active { background: var(--text); color: var(--bg); border-color: var(--text); }
 .action-btn.danger { color: var(--danger); }
-.action-btn.danger:active { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
+.action-btn.danger:active { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 /* Compose pad — the one-handed editing surface in the thumb zone */
 #compose {
   flex-shrink: 0;
   background: var(--surface);
-  border-top: var(--hair) solid var(--border);
+  border-top: 1px solid var(--hair);
   padding: 0.4rem;
   padding-left: max(0.4rem, env(safe-area-inset-left));
   padding-right: max(0.4rem, env(safe-area-inset-right));
@@ -689,9 +714,9 @@ body.keyboard-open #compose { display: none; }
   height: 32dvh;
   min-height: 170px;
   max-height: 300px;
-  border-radius: 12px;
+  border-radius: 18px;
   background: var(--surface2);
-  border: var(--hair) solid var(--border);
+  border: 1px solid transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -703,7 +728,7 @@ body.keyboard-open #compose { display: none; }
 }
 
 .pad.empty {
-  border-style: dashed;
+  border: 1.5px dashed var(--border);
   background: transparent;
 }
 
@@ -739,21 +764,23 @@ body.keyboard-open #compose { display: none; }
 
 .pad-hint {
   position: absolute;
-  bottom: 0.5rem;
+  bottom: 0.6rem;
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 0.75rem;
-  color: var(--text2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text3);
   pointer-events: none;
 }
 
 .pad.empty .pad-hint {
   position: static;
-  font-size: 0.95rem;
+  font-size: 15px;
+  color: var(--text2);
 }
 
-.action-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.action-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
 #palette[hidden] { display: none; }
 
@@ -764,6 +791,7 @@ body.keyboard-open #compose { display: none; }
     --score-bg: #fff;
     --score-text: #000;
     --score-muted: #555;
+    --shadow: none;
     --neume-color: #000;
     --neume-red: #c00;
     --lyric-color: #000;
