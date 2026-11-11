@@ -1143,31 +1143,24 @@ body.lyric-mode #palette { display: none; }
   background: var(--score-bg);
   color: var(--accent2);
 }
-.combine-go, .combine-x {
+.combine-go {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 1.9rem;
+  padding: 0 0.4rem;
   border: 0;
+  border-radius: 999px;
   background: none;
   color: inherit;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-.combine-go { min-width: 1.9rem; padding: 0 0.3rem 0 0.4rem; border-radius: 999px 0 0 999px; }
-.combine-x {
-  padding: 0 0.45rem 0 0.35rem;
-  border-left: 1px solid var(--accent-mid);
-  border-radius: 0 999px 999px 0;
-  color: var(--text3);
-  font: 500 14px/1 var(--sans);
-}
-/* Finger-sized targets around the small mark */
-.combine-go::before { content: ''; position: absolute; inset: -0.6rem 0 -0.6rem -0.5rem; }
-.combine-x::before { content: ''; position: absolute; inset: -0.6rem -0.5rem -0.6rem 0; }
-.combine-go:hover, .combine-go:active,
-.combine-x:hover, .combine-x:active { background: var(--accent-soft); }
+/* A finger-sized target around the small mark */
+.combine-go::before { content: ''; position: absolute; inset: -0.6rem -0.5rem; }
+.combine-go:hover, .combine-go:active { background: var(--accent-soft); }
 .combine-glyph {
   font-family: 'Neanes', sans-serif;
   font-size: 1rem;
