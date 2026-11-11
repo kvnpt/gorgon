@@ -157,14 +157,21 @@ export function computeMartyria(noteValue, currentScale, martyriaRules) {
  * Compute the beat duration contributed by a note element.
  * Base duration is 1 beat. TimeNeume modifiers adjust this.
  */
+// Time signs are stored by SBMuFL glyph name; timeDurations uses Neanes names
+const SBMUFL_TIME = {
+  klasmaAbove: 'Klasma_Top', klasmaBelow: 'Klasma_Bottom', apli: 'Hapli',
+  dipli: 'Dipli', tripli: 'Tripli', tetrapli: 'Tetrapli',
+};
+
 function computeBeatDuration(element, timeDurations) {
   let duration = 1;
+  const time = SBMUFL_TIME[element.timeNeume] || element.timeNeume;
 
-  if (element.timeNeume && timeDurations[element.timeNeume] !== undefined) {
+  if (time && timeDurations[time] !== undefined) {
     // Klasma/Hapli add 1 beat (duration stays the same as they extend),
     // Dipli adds 2, Tripli adds 3, Tetrapli adds 4.
     // The timeDurations values represent additional beats.
-    duration += timeDurations[element.timeNeume];
+    duration += timeDurations[time];
   }
 
   return duration;
