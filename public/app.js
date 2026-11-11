@@ -564,8 +564,8 @@ function render() {
   // Insert point at start
   html += insertPointHtml(0);
 
-  // Pairs of notes one neume can write (not while typing words)
-  const pairs = lyricMode ? [] : combinablePairs();
+  // Pairs of notes one neume can write
+  const pairs = combinablePairs();
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
 
   for (let i = 0; i < score.elements.length; i++) {
@@ -716,10 +716,17 @@ function bindScoreEvents() {
 
   // The mark over a pair of notes combines them into one neume
   scoreEl.querySelectorAll('.combine-mark').forEach(btn => {
+    // In lyric mode the text field keeps focus, so the keyboard stays up
+    const keepFocus = (e) => { if (lyricMode) e.preventDefault(); };
+    btn.addEventListener('pointerdown', keepFocus);
+    btn.addEventListener('mousedown', keepFocus);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.combine);
-      if (combinePair(idx)) { haptic(); refresh(); }
+      if (!combinePair(idx)) return;
+      haptic();
+      if (lyricMode) showLyricCaret(undefined, true);
+      else refresh();
     });
   });
 
@@ -984,8 +991,53 @@ function qualityAllowed(sign, neume) {
   }
 }
 
+// The Qual. ladder: none, then petasti (an ascending oligon-family note
+// written as its petasti, the petasti's own expression), then the quality
+// signs the plain neume can carry
 function qualityOptions(el) {
-  return [null, ...QUALITY_SIGNS.filter(q => qualityAllowed(q, el.quantitativeNeume))];
+  const plain = oligonFormOf(el.quantitativeNeume);
+  const petasti = petastiFormOf(plain) ? ['petasti'] : [];
+  return [null, ...petasti, ...QUALITY_SIGNS.filter(q => qualityAllowed(q, plain))];
+}
+
+function qualityOptionOf(el) {
+  if (el.vocalExpression) return el.vocalExpression;
+  return /^Petasti/.test(el.quantitativeNeume) && petastiFormOf(oligonFormOf(el.quantitativeNeume))
+    ? 'petasti' : null;
+}
+
+function qualityLabel(q) {
+  if (!q) return 'none';
+  return q === 'petasti' ? 'Petasti' : QUALITY_NAMES[q] || q;
+}
+
+// Same interval, other family: Oligon <-> Petasti, OligonPlusKentimaBelow
+// <-> PetastiPlusOligon, and so on (ascending neumes only)
+function petastiFormOf(neume) {
+  const v = theory.neumeValues?.neumeValues?.[neume];
+  if (!/^Oligon/.test(neume) || !(v > 0) || isKentemata(neume)) return null;
+  return Object.entries(theory.neumeValues.neumeValues)
+    .find(([n, val]) => val === v && /^Petasti/.test(n) && NEUME_TO_SBMUFL[n])?.[0] || null;
+}
+
+function oligonFormOf(neume) {
+  const v = theory.neumeValues?.neumeValues?.[neume];
+  if (!/^Petasti/.test(neume) || !(v > 0)) return neume;
+  return Object.entries(theory.neumeValues.neumeValues)
+    .find(([n, val]) => val === v && /^Oligon/.test(n) && !isKentemata(n) && NEUME_TO_SBMUFL[n])?.[0] || neume;
+}
+
+// Put a rung of the Qual. ladder on a note
+function setQuality(el, q) {
+  const plain = oligonFormOf(el.quantitativeNeume);
+  const neume = q === 'petasti' ? petastiFormOf(plain) : plain;
+  if (neume !== el.quantitativeNeume) {
+    el.quantitativeNeume = neume;
+    delete el._glyph;
+    delete el._codepoint;
+    fitTimeSign(el);
+  }
+  el.vocalExpression = q === 'petasti' ? null : q;
 }
 
 // ----------------------------------------------------------------------------
@@ -1092,15 +1144,28 @@ function fitTimeSign(el) {
 }
 
 // ----------------------------------------------------------------------------
-// Combined neumes: two notes in a row that one neume writes more simply.
+// Combined neumes: two notes in a row that one neume writes more simply,
+// usually so a syllable can sit over both.
 //   Running elaphron: an apostrophos with a gorgon, then another apostrophos
 //     (two steps down; the running elaphron carries the first gorgon itself,
 //     so only the second note's time sign is written on it)
-//   Oligon with kentemata: two oligons in a row (two steps up)
+//   Kentemata over an oligon: two oligons in a row (two steps up)
+//   A note on the oligon "table", then kentemata: ison, apostrophos,
+//     elaphron, elaphron+apostrophos or hamili followed by an oligon
 // The score marks each such pair and a tap (on the mark or the pad's
 // Combine pill) swaps the two notes for the one neume.
 // ----------------------------------------------------------------------------
 const SIMPLE_GORGONS = ['gorgonAbove', 'gorgonBelow'];
+const plainTime = (a) => !a.gorgonNeume && !a.timeNeume;
+const isOligon = (b) => b.quantitativeNeume === 'Oligon';
+const ON_OLIGON_TABLE = {
+  Ison: ['OligonPlusIsonPlusKentemata', 'Ison and kentemata on an oligon'],
+  Apostrophos: ['OligonPlusApostrophosPlusKentemata', 'Apostrophos and kentemata on an oligon'],
+  Elaphron: ['OligonPlusElaphronPlusKentemata', 'Elaphron and kentemata on an oligon'],
+  ElaphronPlusApostrophos: ['OligonPlusElaphronPlusApostrophosPlusKentemata',
+    'Elaphron, apostrophos and kentemata on an oligon'],
+  Hamili: ['OligonPlusHamiliPlusKentemata', 'Hamili and kentemata on an oligon'],
+};
 const COMBINE_RULES = [
   {
     result: 'RunningElaphron', name: 'Running elaphron',
@@ -1109,22 +1174,41 @@ const COMBINE_RULES = [
     second: (b) => b.quantitativeNeume === 'Apostrophos',
   },
   {
-    result: 'OligonPlusKentemata', name: 'Oligon with kentemata',
-    first: (a) => a.quantitativeNeume === 'Oligon' && !a.gorgonNeume && !a.timeNeume,
-    second: (b) => b.quantitativeNeume === 'Oligon',
+    result: 'KentemataPlusOligon', name: 'Kentemata over an oligon',
+    first: (a) => a.quantitativeNeume === 'Oligon' && plainTime(a),
+    second: isOligon,
   },
+  ...Object.entries(ON_OLIGON_TABLE).map(([first, [result, name]]) => ({
+    result, name,
+    first: (a) => a.quantitativeNeume === first && plainTime(a),
+    second: isOligon,
+  })),
 ];
 
 // The second note folds into the first, so it may only carry signs the
-// combined neume keeps: its time sign, and no syllable of its own
+// combined neume keeps (its time sign). A syllable of its own moves on to
+// the next note, pushing the words after it along to the first note
+// without words, which takes up the shift.
 const HELD_LYRICS = ['', '_', '-'];
-function combinedNote(a, b) {
+const ownSyllable = (el) => !HELD_LYRICS.includes(el.lyric || '');
+
+function lyricShiftEnd(fromIdx) {
+  for (let j = fromIdx; j < score.elements.length; j++) {
+    const el = score.elements[j];
+    if (el.type === 'note' && !(el.lyric || '')) return j;
+  }
+  return -1;
+}
+
+function combinedNote(idx) {
+  const a = score.elements[idx];
+  const b = score.elements[idx + 1];
   if (a?.type !== 'note' || b?.type !== 'note') return null;
   if (a === placeholderEl || b === placeholderEl) return null;
   const rule = COMBINE_RULES.find(r => r.first(a) && r.second(b));
-  if (!rule) return null;
+  if (!rule || !NEUME_TO_SBMUFL[rule.result]) return null;
   if (b.fthora || b.accidental || b.vocalExpression || b.ison || b.measureBar) return null;
-  if (!HELD_LYRICS.includes(b.lyric || '')) return null;
+  if (ownSyllable(b) && lyricShiftEnd(idx + 2) < 0) return null;
   if (a.vocalExpression && !qualityAllowed(a.vocalExpression, rule.result)) return null;
   const merged = { ...a, quantitativeNeume: rule.result,
     timeNeume: b.timeNeume || null, gorgonNeume: b.gorgonNeume || null };
@@ -1139,9 +1223,8 @@ function combinedNote(a, b) {
 // Every combinable pair, left to right; a note belongs to one pair at most
 function combinablePairs() {
   const pairs = [];
-  const els = score.elements;
-  for (let i = 0; i < els.length - 1; i++) {
-    const c = combinedNote(els[i], els[i + 1]);
+  for (let i = 0; i < score.elements.length - 1; i++) {
+    const c = combinedNote(i);
     if (c) { pairs.push({ idx: i, ...c }); i++; }
   }
   return pairs;
@@ -1157,12 +1240,27 @@ function pairAtFocus(pairs = combinablePairs()) {
 }
 
 function combinePair(idx) {
-  const c = combinedNote(score.elements[idx], score.elements[idx + 1]);
+  const c = combinedNote(idx);
   if (!c) return false;
   pushHistory();
+  const b = score.elements[idx + 1];
+  if (ownSyllable(b)) {
+    // Push the words on by one note, up to the first note without any
+    let carry = b.lyric;
+    const end = lyricShiftEnd(idx + 2);
+    for (let j = idx + 2; j <= end; j++) {
+      const el = score.elements[j];
+      if (el.type !== 'note') continue;
+      [el.lyric, carry] = [carry, el.lyric];
+    }
+  }
   score.elements.splice(idx, 2, c.merged);
   if (selectedIdx > idx) selectedIdx--;
   if (cursorPos > idx + 1) cursorPos--;
+  if (lyricMode) {
+    if (lyricMode.start > idx) lyricMode.start--;
+    restartLyricsAfterCombine(idx);
+  }
   return true;
 }
 
@@ -1435,12 +1533,12 @@ function initComposePad() {
         insertOnEmptySlot('ison');     // first swipe up or down gives Ison
       } else if (el.type === 'note' && padMode === 'quality') {
         const options = qualityOptions(el);
-        const i = Math.max(0, options.indexOf(el.vocalExpression || null));
+        const i = Math.max(0, options.indexOf(qualityOptionOf(el)));
         const next = Math.max(0, Math.min(options.length - 1, i + dir));
         if (next === i) return;
         pushHistory();
         if (el === placeholderEl) keepPlaceholder();
-        el.vocalExpression = options[next];
+        setQuality(el, options[next]);
       } else if (el.type === 'note' && padMode === 'time') {
         const step = timeStep(el, dir);
         if (!step) return;
@@ -1505,11 +1603,12 @@ function renderPad() {
   if (el && el.type === 'note' && padMode === 'quality') {
     const a = analysisResult[selectedIdx];
     const options = qualityOptions(el);
-    const i = Math.max(0, options.indexOf(el.vocalExpression || null));
-    const label = (q) => (q ? QUALITY_NAMES[q] : 'none');
+    const current = qualityOptionOf(el);
+    const i = Math.max(0, options.indexOf(current));
+    const label = qualityLabel;
     pad.classList.remove('empty');
     glyphEl.innerHTML = noteGlyphHtml(el);
-    valueEl.textContent = el.vocalExpression ? QUALITY_NAMES[el.vocalExpression] || el.vocalExpression : 'No quality sign';
+    valueEl.textContent = current ? qualityLabel(current) : 'No quality sign';
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
     const up = i < options.length - 1 ? `↑ ${label(options[i + 1])}` : '';
@@ -1664,6 +1763,18 @@ function startLyricsAt(idx, selectFirst = true) {
   showLyricCaret(undefined, true);
 }
 
+// After a combine the words under the notes moved: rebuild the text and
+// put the caret after the combined note's syllable
+function restartLyricsAfterCombine(idx) {
+  const input = lyricInput();
+  input.value = buildLyricText(lyricNotes(lyricMode.start).map(i => score.elements[i].lyric));
+  const k = lyricNotes(lyricMode.start).indexOf(idx);
+  const slot = k >= 0 ? lyricSlots()[k] : null;
+  const at = slot ? slot.end : input.value.length;
+  input.setSelectionRange(at, at);
+  reanalyze();
+}
+
 function exitLyricMode() {
   if (!lyricMode) return;
   lyricMode = null;
@@ -1764,6 +1875,10 @@ function initLyricMode() {
   });
   document.getElementById('lyric-hold').addEventListener('click', () => {
     input.focus();
+    // A hold goes in before a selected syllable, pushing it (and the rest
+    // of the words) on to the next note, rather than replacing it
+    const at = input.selectionStart ?? input.value.length;
+    input.setSelectionRange(at, at);
     insertIntoLyrics('_');
   });
   document.getElementById('lyric-auto').addEventListener('click', () => {
