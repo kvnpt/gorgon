@@ -21,27 +21,17 @@
     </div>
   </header>
 
-  <div id="toolbar">
-    <div class="toolbar-row">
-      <label for="score-title" class="toolbar-label">Title</label>
-      <input type="text" id="score-title" placeholder="Untitled" autocomplete="off">
-      <label for="score-mode" class="toolbar-label">Mode</label>
-      <select id="score-mode">
-        <option value="1">Mode 1 (Protos)</option>
-        <option value="2">Mode 2 (Devteros)</option>
-        <option value="3">Mode 3 (Tritos)</option>
-        <option value="4">Mode 4 (Tetartos)</option>
-        <option value="5">Pl. Mode 1 (Plagios Protos)</option>
-        <option value="6">Pl. Mode 2 (Plagios Devteros)</option>
-        <option value="7">Grave (Varys)</option>
-        <option value="8">Pl. Mode 4 (Plagios Tetartos)</option>
-      </select>
-    </div>
-  </div>
-
   <main id="score-area">
     <div id="score" class="score">
-      <!-- Rendered score elements appear here -->
+      <!-- Title and mode live on the page itself, outside the re-rendered
+           body so typing the title keeps the keyboard up -->
+      <div id="score-head" class="score-head">
+        <textarea id="score-title" class="score-title" rows="1" placeholder="Untitled" autocomplete="off" spellcheck="false" aria-label="Title"></textarea>
+        <button type="button" id="score-mode" class="score-mode-label" aria-haspopup="menu" aria-expanded="false" title="Choose the mode"></button>
+      </div>
+      <div id="score-body">
+        <!-- Rendered score elements appear here -->
+      </div>
     </div>
   </main>
 

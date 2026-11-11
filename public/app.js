@@ -122,6 +122,124 @@ const modeLabels = {
   8: 'Plagal Mode 4 — Plagios Tetartos',
 };
 
+// The mode picker: each authentic mode beside its plagal (its "brother"),
+// 1 with 5, 2 with 6, 3 with 7 (Grave), 4 with 8. A menu out of the mode
+// line on the page, as agora's are.
+const modeNames = {
+  1: ['Mode 1', 'Protos'],
+  2: ['Mode 2', 'Devteros'],
+  3: ['Mode 3', 'Tritos'],
+  4: ['Mode 4', 'Tetartos'],
+  5: ['Plagal 1', 'Plagios Protos'],
+  6: ['Plagal 2', 'Plagios Devteros'],
+  7: ['Grave', 'Varys'],
+  8: ['Plagal 4', 'Plagios Tetartos'],
+};
+
+const currentMode = () => score.modeKey?.mode || score.mode || 1;
+
+function renderScoreHead() {
+  const title = document.getElementById('score-title');
+  const want = score.metadata?.title || '';
+  if (document.activeElement !== title && title.value !== want) {
+    title.value = want;
+    fitTitle();
+  }
+  const btn = document.getElementById('score-mode');
+  const text = modeLabels[currentMode()] || modeLabels[1];
+  if (btn.dataset.text !== text) {
+    btn.dataset.text = text;
+    btn.innerHTML = `<span>${esc(text)}</span><svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.5 8 10.5 12 6.5"/></svg>`;
+  }
+}
+
+// The title wraps like the printed one: the field grows to fit its lines
+function fitTitle() {
+  const t = document.getElementById('score-title');
+  t.style.height = 'auto';
+  t.style.height = `${t.scrollHeight}px`;
+}
+
+let modeMenu = null;
+
+function setMode(mode) {
+  if (mode === currentMode()) return;
+  pushHistory();
+  score.modeKey = score.modeKey || {};
+  score.modeKey.mode = mode;
+  // The mode's default template sets its scale and base note
+  const template = theory.modeKeys?.templates?.find(t => t.mode === mode);
+  if (template) {
+    score.modeKey.scale = template.scale;
+    score.modeKey.scaleNote = template.scaleNote;
+    score.modeKey.templateId = template.id;
+  }
+  reanalyze();
+  render();
+}
+
+function openModeMenu(btn) {
+  closeModeMenu();
+  const cur = currentMode();
+  const cell = (m) => {
+    const [name, sub] = modeNames[m];
+    const on = m === cur;
+    return `<button type="button" class="mm-cell${on ? ' on' : ''}" role="menuitemradio" aria-checked="${on}" data-mode="${m}">`
+      + `<b>${esc(name)}</b><small>${esc(sub)}</small></button>`;
+  };
+  let html = '<div class="mm-head">Authentic</div><div class="mm-head">Plagal</div>';
+  for (let m = 1; m <= 4; m++) html += cell(m) + cell(m + 4);
+  const el = document.createElement('div');
+  el.className = 'popmenu mode-menu';
+  el.setAttribute('role', 'menu');
+  el.setAttribute('aria-label', 'Mode');
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  // Under the mode line, centred on it and kept on the screen; above it if
+  // there is more room there.
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  const left = Math.max(10, Math.min(window.innerWidth - w - 10, r.left + r.width / 2 - w / 2));
+  const below = window.innerHeight - r.bottom;
+  const up = below < h + 16 && r.top > below;
+  el.style.left = `${left}px`;
+  if (up) el.style.bottom = `${window.innerHeight - r.top + 8}px`;
+  else el.style.top = `${r.bottom + 8}px`;
+  // It grows out of the button
+  el.style.transformOrigin = `${Math.round(r.left + r.width / 2 - left)}px ${up ? '100%' : '0'}`;
+
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('.mm-cell');
+    if (!b) return;
+    setMode(parseInt(b.dataset.mode, 10));
+    closeModeMenu();
+  });
+  btn.setAttribute('aria-expanded', 'true');
+  modeMenu = el;
+  el.querySelector('.mm-cell.on')?.focus({ preventScroll: true });
+}
+
+function closeModeMenu() {
+  if (!modeMenu) return;
+  const el = modeMenu;
+  modeMenu = null;
+  document.getElementById('score-mode').setAttribute('aria-expanded', 'false');
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 130);
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (modeMenu && !modeMenu.contains(e.target) && !e.target.closest('#score-mode')) closeModeMenu();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modeMenu) { closeModeMenu(); document.getElementById('score-mode').focus(); }
+});
+document.addEventListener('scroll', (e) => { if (modeMenu && !modeMenu.contains(e.target)) closeModeMenu(); }, { capture: true, passive: true });
+window.addEventListener('resize', () => closeModeMenu());
+
 // ----------------------------------------------------------------------------
 // Martyria: a note letter with its root sign underneath, both red.
 // The letter comes from the pitch (noteValue -9..11 maps in order onto
@@ -437,15 +555,11 @@ function getSupportGlyphs(el) {
 // ============================================================================
 
 function render() {
-  const scoreEl = document.getElementById('score');
-  const titleText = score.metadata?.title || score.title || 'Untitled';
-  const modeText = modeLabels[score.modeKey?.mode || score.mode] || 'Mode 1';
-
-  let html = `<div class="score-title">${esc(titleText)}</div>`;
-  html += `<div class="score-mode-label">${esc(modeText)}</div>`;
+  const scoreEl = document.getElementById('score-body');
+  renderScoreHead();
 
   // Reflowable score content — neumes flow like text
-  html += '<div class="score-content">';
+  let html = '<div class="score-content">';
 
   // Insert point at start
   html += insertPointHtml(0);
@@ -697,23 +811,26 @@ function scrollSelectionIntoView() {
 // ============================================================================
 
 function initToolbar() {
-  document.getElementById('score-title').addEventListener('input', (e) => {
-    score.metadata.title = e.target.value;
-    render();
+  const title = document.getElementById('score-title');
+  title.addEventListener('input', () => {
+    // One line in the score: a pasted newline becomes a space
+    if (title.value.includes('\n')) title.value = title.value.replace(/\s*\n\s*/g, ' ');
+    score.metadata.title = title.value;
+    fitTitle();
+  });
+  title.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); title.blur(); }
+  });
+  title.addEventListener('blur', () => {
+    title.value = title.value.trim();
+    score.metadata.title = title.value;
   });
 
-  document.getElementById('score-mode').addEventListener('change', (e) => {
-    const mode = parseInt(e.target.value);
-    score.modeKey.mode = mode;
-    // Look up default template for this mode
-    const template = theory.modeKeys?.templates?.find(t => t.mode === mode);
-    if (template) {
-      score.modeKey.scale = template.scale;
-      score.modeKey.scaleNote = template.scaleNote;
-      score.modeKey.templateId = template.id;
-    }
-    reanalyze();
-    render();
+  const modeBtn = document.getElementById('score-mode');
+  modeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (modeMenu) closeModeMenu();
+    else openModeMenu(modeBtn);
   });
 
   document.getElementById('btn-new').addEventListener('click', async () => {
@@ -1544,7 +1661,7 @@ function initLyricMode() {
 
 function initKeyboard() {
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -1584,8 +1701,6 @@ function openScore(next) {
   placeholderEl = null;
   history = [];
   analysisResult = [];
-  document.getElementById('score-title').value = score.metadata.title || '';
-  document.getElementById('score-mode').value = score.modeKey?.mode || 1;
   enterBlank(score.elements.length);
   refresh();
   saveToLocal();
@@ -1622,8 +1737,6 @@ function loadFromLocal() {
         score.metadata.id = newDocId();
         localStorage.setItem('gorgon-score-v2', JSON.stringify(score));
       }
-      document.getElementById('score-title').value = score.metadata?.title || '';
-      document.getElementById('score-mode').value = score.modeKey?.mode || 1;
     }
   } catch (e) { /* corrupt */ }
 }

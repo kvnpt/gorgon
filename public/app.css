@@ -45,6 +45,9 @@
   --selected: rgba(242, 106, 0, 0.16);
   --shadow: 0 0 0 1px var(--hair);
   --radius: 12px;
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-solid: rgba(250, 250, 252, 0.97);
+  --shadow-lift: 0 10px 40px rgba(0, 0, 0, 0.18);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -77,6 +80,9 @@
     --neume-red: #ff6b61;
     --lyric-color: #f4f4f6;
     --selected: rgba(255, 138, 61, 0.22);
+    --glass: rgba(36, 36, 42, 0.62);
+    --glass-solid: rgba(30, 30, 35, 0.97);
+    --shadow-lift: 0 10px 40px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -256,64 +262,6 @@ a.header-btn { text-decoration: none; }
 }
 .toast[hidden] { display: none; }
 
-/* Toolbar */
-#toolbar {
-  padding: 0.4rem 1rem;
-  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
-  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
-  background: var(--surface);
-  border-bottom: 1px solid var(--hair);
-  flex-shrink: 0;
-}
-
-.toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.toolbar-label {
-  font-size: 11px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text2);
-}
-
-#score-title:focus, #score-mode:focus { outline: none; border-color: var(--accent); }
-
-#score-title {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  min-height: 36px;
-  padding: 6px 12px;
-  font: 15px/1.3 var(--sans);
-  -webkit-appearance: none;
-  appearance: none;
-  flex: 1;
-  min-width: 100px;
-}
-
-#score-mode {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  min-height: 36px;
-  padding: 6px 12px;
-  font: 15px/1.3 var(--sans);
-  -webkit-appearance: none;
-  appearance: none;
-  padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238b8f98' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5 8 10.5 12 6.5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 14px 14px;
-}
-
 /* Score Area */
 #score-area {
   flex: 1;
@@ -339,23 +287,126 @@ a.header-btn { text-decoration: none; }
   position: relative;
 }
 
-/* Score title display */
+/* Title and mode, on the page: the title is typed in place, the mode line
+   opens the mode picker. They read as the printed heading, not as fields. */
+.score-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
 .score-title {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--score-text);
   text-align: center;
   font: 700 21px/1.25 'Georgia', serif;
   letter-spacing: -.01em;
-  color: var(--score-text);
-  margin-bottom: 0.25rem;
+  padding: 2px 6px;
+  margin-bottom: 0.1rem;
+  -webkit-appearance: none;
+  appearance: none;
 }
+.score-title::placeholder { color: var(--score-muted); opacity: .55; }
+.score-title:hover { background: var(--score-tint); }
+.score-title:focus { outline: none; background: var(--score-tint); box-shadow: inset 0 -2px 0 var(--accent); }
 
 .score-mode-label {
-  text-align: center;
-  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 2px 8px 2px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
   color: var(--score-muted);
-  margin-bottom: 1.5rem;
-  font-family: 'Georgia', serif;
-  font-style: italic;
+  font: italic 0.9rem/1.2 'Georgia', serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.score-mode-label .chev {
+  width: 13px; height: 13px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.75;
+  stroke-linecap: round; stroke-linejoin: round;
+  opacity: .7;
+  transition: transform .15s;
+}
+.score-mode-label:hover { background: var(--score-tint); color: var(--score-text); }
+.score-mode-label[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent2); }
+.score-mode-label[aria-expanded="true"] .chev { transform: rotate(180deg); opacity: 1; }
+.score-mode-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* A menu out of the button tapped, after agora's (.popmenu in next.css) */
+.popmenu {
+  position: fixed;
+  z-index: 55;
+  max-width: calc(100vw - 20px);
+  padding: 5px;
+  background: var(--glass-solid);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lift);
+  animation: pm-in .16s cubic-bezier(.2, .8, .2, 1);
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .popmenu {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
+  }
+}
+.popmenu.out { opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; }
+@keyframes pm-in { from { opacity: 0; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) { .popmenu, .popmenu.out { animation: none; transition: none; } }
+
+/* The mode picker: authentic modes on the left, each beside its plagal */
+.mode-menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4px;
+  row-gap: 2px;
+  width: 300px;
+}
+.mm-head {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 3px;
+}
+.mm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 48px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mm-cell b { font-size: 15.5px; font-weight: 550; }
+.mm-cell small { font-size: 12.5px; color: var(--text2); }
+.mm-cell:hover, .mm-cell:active { background: var(--line); }
+.mm-cell:focus { outline: none; }
+.mm-cell:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-mid); }
+.mm-cell.on { background: var(--accent-soft); }
+.mm-cell.on b { color: var(--accent2); }
 
 /* Reflowable score content — neumes flow like text */
 .score-content {
@@ -452,7 +503,7 @@ a.header-btn { text-decoration: none; }
 
 /* Phones auto-zoom into inputs under 16px; keep lyric and title at 16px */
 @media (pointer: coarse) {
-  #lyric-input, #score-title, #score-mode { font-size: 16px; }
+  #lyric-input { font-size: 16px; }
 }
 
 /* Cursor insertion point. The visible cursor is a 2px line; the tap
@@ -870,7 +921,7 @@ body.keyboard-open #compose { display: none; }
   }
   html, body { background: #fff; }
   body { height: auto; overflow: visible; position: static; }
-  #header, #toolbar, #palette, #compose, #lyric-bar, .sheet, .toast { display: none !important; }
+  #header, #palette, .popmenu, #compose, #lyric-bar, .sheet, .toast { display: none !important; }
   #score-area { padding: 0; overflow: visible; }
   .score {
     box-shadow: none;
@@ -881,6 +932,8 @@ body.keyboard-open #compose { display: none; }
   }
   .insert-point, .note-col.cursor::after { display: none; }
   .analysis-bar { display: none; }
+  .score-mode-label .chev { display: none; }
+  .score-title, .score-mode-label { background: none !important; box-shadow: none !important; }
 }
 
 /* Mobile adjustments */
@@ -894,11 +947,6 @@ body.keyboard-open #compose { display: none; }
   #header h1 { font-size: 0.95rem; }
   .score { padding: 1.2rem 1rem; }
   .palette-grid { grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr)); }
-  #toolbar {
-    padding: 0.4rem 0.75rem;
-    padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
-    padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
-  }
 }
 
 .pad.empty .pad-glyph,
@@ -1026,7 +1074,6 @@ body.keyboard-open #compose { display: none; }
 body.keyboard-open #lyric-bar { padding-bottom: 0.4rem; }
 body.lyric-mode #compose,
 body.lyric-mode #palette { display: none; }
-body.lyric-mode.keyboard-open #toolbar { display: none; }
 
 .lyric-row {
   display: flex;
