@@ -1136,32 +1136,44 @@ body.lyric-mode #palette { display: none; }
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.9rem;
+  align-items: stretch;
   height: 1.6rem;
-  padding: 0 0.35rem;
   border: 1px solid var(--accent-mid);
   border-radius: 999px;
   background: var(--score-bg);
   color: var(--accent2);
+}
+.combine-go, .combine-x {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: inherit;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-/* A finger-sized target around the small mark */
-.combine-mark::before {
-  content: '';
-  position: absolute;
-  inset: -0.6rem -0.5rem;
+.combine-go { min-width: 1.9rem; padding: 0 0.3rem 0 0.4rem; border-radius: 999px 0 0 999px; }
+.combine-x {
+  padding: 0 0.45rem 0 0.35rem;
+  border-left: 1px solid var(--accent-mid);
+  border-radius: 0 999px 999px 0;
+  color: var(--text3);
+  font: 500 14px/1 var(--sans);
 }
-.combine-mark:hover, .combine-mark:active { background: var(--accent-soft); }
+/* Finger-sized targets around the small mark */
+.combine-go::before { content: ''; position: absolute; inset: -0.6rem 0 -0.6rem -0.5rem; }
+.combine-x::before { content: ''; position: absolute; inset: -0.6rem -0.5rem -0.6rem 0; }
+.combine-go:hover, .combine-go:active,
+.combine-x:hover, .combine-x:active { background: var(--accent-soft); }
 .combine-glyph {
   font-family: 'Neanes', sans-serif;
   font-size: 1rem;
   line-height: 1;
 }
-.combine-mark .combine-glyph { font-size: 1.05rem; }
+.combine-go .combine-glyph { font-size: 1.05rem; }
 
 /* The pad's Combine pill, bottom-right */
 .pad-mode-br { left: auto; right: 0.6rem; }

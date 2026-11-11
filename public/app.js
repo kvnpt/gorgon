@@ -564,8 +564,8 @@ function render() {
   // Insert point at start
   html += insertPointHtml(0);
 
-  // Pairs of notes one neume can write
-  const pairs = combinablePairs();
+  // Pairs of notes one neume can write, unless their mark was dismissed
+  const pairs = combinablePairs().filter(p => !score.elements[p.idx].combineDismissed);
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
 
   for (let i = 0; i < score.elements.length; i++) {
@@ -645,12 +645,16 @@ function noteGlyphHtml(el) {
 }
 
 // The mark over a combinable pair: the combined neume, small and orange,
-// standing over the join of the two notes
+// standing over the join of the two notes, with a × to dismiss it
+// (tapping the gap between the two notes brings it back)
 function combineMarkHtml(pair) {
   const char = getNeumeChar(pair.merged);
   const label = esc(`Combine into ${pair.rule.name.toLowerCase()}`);
-  return `<button type="button" class="combine-mark" data-combine="${pair.idx}" title="${label}" aria-label="${label}">`
-    + `<span class="combine-glyph">${char}</span></button>`;
+  return `<span class="combine-mark">`
+    + `<button type="button" class="combine-go" data-combine="${pair.idx}" title="${label}" aria-label="${label}">`
+    + `<span class="combine-glyph">${char}</span></button>`
+    + `<button type="button" class="combine-x" data-dismiss="${pair.idx}" title="Dismiss" aria-label="Dismiss">×</button>`
+    + `</span>`;
 }
 
 function noteColHtml(el, idx, analysis, pair) {
@@ -715,11 +719,13 @@ function bindScoreEvents() {
   const scoreEl = document.getElementById('score');
 
   // The mark over a pair of notes combines them into one neume
-  scoreEl.querySelectorAll('.combine-mark').forEach(btn => {
+  scoreEl.querySelectorAll('.combine-go, .combine-x').forEach(btn => {
     // In lyric mode the text field keeps focus, so the keyboard stays up
     const keepFocus = (e) => { if (lyricMode) e.preventDefault(); };
     btn.addEventListener('pointerdown', keepFocus);
     btn.addEventListener('mousedown', keepFocus);
+  });
+  scoreEl.querySelectorAll('.combine-go').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.combine);
@@ -727,6 +733,19 @@ function bindScoreEvents() {
       haptic();
       if (lyricMode) showLyricCaret(undefined, true);
       else refresh();
+    });
+  });
+  // Dismissing a mark hides it (kept with the score) until the gap between
+  // its two notes is tapped
+  scoreEl.querySelectorAll('.combine-x').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const el = score.elements[parseInt(btn.dataset.dismiss)];
+      if (!el) return;
+      pushHistory();
+      el.combineDismissed = true;
+      haptic();
+      render();
     });
   });
 
@@ -765,8 +784,18 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
     ip.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (lyricMode) { document.getElementById('lyric-input').focus(); return; }
       let pos = parseInt(ip.dataset.insert);
+      // The gap between a pair whose mark was dismissed offers it again
+      const before = score.elements[pos - 1];
+      if (before?.combineDismissed && combinedNote(pos - 1)) {
+        pushHistory();
+        delete before.combineDismissed;
+        haptic();
+        render();
+        if (lyricMode) document.getElementById('lyric-input').focus();
+        return;
+      }
+      if (lyricMode) { document.getElementById('lyric-input').focus(); return; }
       const p = placeholderIndex();
       dropPlaceholder();
       if (p >= 0 && pos > p) pos--;
@@ -1190,14 +1219,14 @@ const COMBINE_RULES = [
 // The second note folds into the first, so it may only carry signs the
 // combined neume keeps (its time sign). A syllable of its own moves on to
 // the next note, pushing the words after it along to the first note
-// without words, which takes up the shift.
+// without a syllable of its own (blank or a hold), which takes up the shift.
 const HELD_LYRICS = ['', '_', '-'];
 const ownSyllable = (el) => !HELD_LYRICS.includes(el.lyric || '');
 
 function lyricShiftEnd(fromIdx) {
   for (let j = fromIdx; j < score.elements.length; j++) {
     const el = score.elements[j];
-    if (el.type === 'note' && !(el.lyric || '')) return j;
+    if (el.type === 'note' && !ownSyllable(el)) return j;
   }
   return -1;
 }
@@ -1240,7 +1269,8 @@ function pairAtFocus(pairs = combinablePairs()) {
   const focusEl = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
   const pending = !focusEl || focusEl === placeholderEl;
   const at = pending ? (selectedIdx >= 0 ? selectedIdx : cursorPos) - 1 : selectedIdx;
-  return pairs.find(p => p.idx === at || p.idx + 1 === at) || null;
+  return pairs.find(p => (p.idx === at || p.idx + 1 === at)
+    && !score.elements[p.idx].combineDismissed) || null;
 }
 
 function combinePair(idx) {
