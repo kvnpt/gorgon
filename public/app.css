@@ -437,26 +437,22 @@ a.header-btn { text-decoration: none; }
   white-space: nowrap;
 }
 
-.lyric-input {
-  font-size: 0.85rem;
-  font-family: 'Georgia', serif;
-  color: var(--lyric-color);
-  background: var(--accent-soft);
-  border: none;
-  border-bottom: 1px solid var(--accent);
-  text-align: center;
-  width: 3ch;
-  min-width: 3rem;
-  max-width: 12rem;
-  outline: none;
-  padding: 0.1rem;
-  -webkit-user-select: text;
-  user-select: text;
+/* A held note: '-' inside a word, an extender line after the end of one */
+.lyric-held { color: var(--score-muted); }
+.lyric-extender {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+}
+.lyric-extender span {
+  flex: 1;
+  margin: 0 -0.2rem 0.3em;
+  border-bottom: 1px solid var(--lyric-color);
 }
 
 /* Phones auto-zoom into inputs under 16px; keep lyric and title at 16px */
 @media (pointer: coarse) {
-  .lyric-input, #score-title, #score-mode { font-size: 16px; }
+  #lyric-input, #score-title, #score-mode { font-size: 16px; }
 }
 
 /* Cursor insertion point. The visible cursor is a 2px line; the tap
@@ -874,7 +870,7 @@ body.keyboard-open #compose { display: none; }
   }
   html, body { background: #fff; }
   body { height: auto; overflow: visible; position: static; }
-  #header, #toolbar, #palette, #compose, .sheet, .toast { display: none !important; }
+  #header, #toolbar, #palette, #compose, #lyric-bar, .sheet, .toast { display: none !important; }
   #score-area { padding: 0; overflow: visible; }
   .score {
     box-shadow: none;
@@ -1009,3 +1005,75 @@ body.keyboard-open #compose { display: none; }
 .neume.has-quality { padding-bottom: 0.45em; }
 .neume.has-above { padding-top: 0.45em; }
 .pad-glyph .pad-neume.has-above { padding-top: 0.3em; }
+
+/*
+ * Lyric mode: the words bar takes the pad's place (and stays above the
+ * keyboard, where the pad has no room). Title and mode give way too.
+ */
+#lyric-bar {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--hair);
+  padding: 0.4rem;
+  padding-left: max(0.4rem, env(safe-area-inset-left));
+  padding-right: max(0.4rem, env(safe-area-inset-right));
+  padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+#lyric-bar[hidden] { display: none; }
+body.keyboard-open #lyric-bar { padding-bottom: 0.4rem; }
+body.lyric-mode #compose,
+body.lyric-mode #palette { display: none; }
+body.lyric-mode.keyboard-open #toolbar { display: none; }
+
+.lyric-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#lyric-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  font: 16px/1.2 'Georgia', serif;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+#lyric-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#lyric-input::placeholder { color: var(--text3); }
+
+/* The big hyphen: on a phone keyboard '-' sits behind the number layer */
+.lyric-key {
+  flex-shrink: 0;
+  width: 4.5rem;
+  min-height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 700 30px/1 var(--sans);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lyric-key:active { background: var(--accent2); }
+
+.lyric-status {
+  flex: 1.3;
+  min-width: 0;
+  text-align: center;
+  font: 500 12px/1.2 var(--sans);
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyric-status.warn { color: var(--warn); }

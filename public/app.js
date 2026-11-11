@@ -7,6 +7,7 @@ import { createScore, createNote, createMartyria, createModeKey,
 import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
+import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -54,7 +55,6 @@ function codepointToChar(cp) {
 let score = createScore();
 let cursorPos = 0;
 let selectedIdx = -1;
-let editingLyricIdx = -1;
 let analysisResult = [];
 let history = [];
 const MAX_HISTORY = 200;
@@ -98,7 +98,6 @@ function undo() {
   placeholderEl = null;
   cursorPos = Math.min(snap.cursorPos, score.elements.length);
   selectedIdx = snap.selectedIdx < score.elements.length ? snap.selectedIdx : -1;
-  editingLyricIdx = -1;
   if (selectedIdx < 0) enterBlank(cursorPos);
   reanalyze();
   render();
@@ -490,15 +489,6 @@ function render() {
   scoreEl.innerHTML = html;
   bindScoreEvents();
 
-  // Focus lyric input if editing
-  if (editingLyricIdx >= 0) {
-    const input = scoreEl.querySelector(`.lyric-input[data-idx="${editingLyricIdx}"]`);
-    if (input) {
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
-  }
-
   // Update palette validity indicators
   renderPalette();
   renderPad();
@@ -548,13 +538,7 @@ function noteColHtml(el, idx, analysis) {
   let aboveHtml = above ? `<span class="neume-support">${above}</span>` : '';
   let belowHtml = below ? `<span class="neume-support-below">${below}</span>` : '';
 
-  let lyricHtml;
-  if (editingLyricIdx === idx) {
-    const width = Math.max(3, (el.lyric || '').length + 1);
-    lyricHtml = `<input class="lyric-input" data-idx="${idx}" value="${esc(el.lyric)}" style="width:${width}ch" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next">`;
-  } else {
-    lyricHtml = `<span class="lyric">${esc(el.lyric) || '&nbsp;'}</span>`;
-  }
+  const lyricHtml = lyricSpanHtml(el.lyric);
 
   return `<div class="${cls}" data-idx="${idx}">
     ${aboveHtml}
@@ -562,6 +546,14 @@ function noteColHtml(el, idx, analysis) {
     ${belowHtml}
     ${lyricHtml}
   </div>`;
+}
+
+// A held note shows the syllable going on: '-' inside a word, an extender
+// line after the end of one (see lyrics.js)
+function lyricSpanHtml(lyric) {
+  if (lyric === '_') return '<span class="lyric lyric-extender"><span></span></span>';
+  if (lyric === '-') return '<span class="lyric lyric-held">-</span>';
+  return `<span class="lyric">${esc(lyric) || '&nbsp;'}</span>`;
 }
 
 function martyriaColHtml(el, idx, analysis) {
@@ -595,9 +587,14 @@ function bindScoreEvents() {
 
   scoreEl.querySelectorAll('.note-col').forEach(col => {
     col.addEventListener('click', (e) => {
-      if (e.target.classList.contains('lyric-input')) return;
       e.stopPropagation();
       let idx = parseInt(col.dataset.idx);
+      // In lyric mode a tap on a note starts the text from that note
+      if (lyricMode) {
+        if (score.elements[idx]?.type === 'note') startLyricsAt(idx);
+        document.getElementById('lyric-input').focus();
+        return;
+      }
       // Leaving a blank spot drops its untouched placeholder
       if (score.elements[idx] !== placeholderEl) {
         const target = score.elements[idx];
@@ -607,18 +604,14 @@ function bindScoreEvents() {
       // Tapping the syllable line of a note goes straight to lyric editing
       const tappedLyric = e.target.classList.contains('lyric');
       if (tappedLyric && score.elements[idx]?.type === 'note') {
-        startLyricEdit(idx);
+        enterLyricMode(idx);
         return;
       }
       if (selectedIdx === idx) {
-        if (score.elements[idx]?.type === 'note') {
-          editingLyricIdx = idx;
-          render();
-        }
+        if (score.elements[idx]?.type === 'note') enterLyricMode(idx);
       } else {
         selectedIdx = idx;
         cursorPos = idx + 1;
-        editingLyricIdx = -1;
         render();
       }
     });
@@ -627,6 +620,7 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.insert-point').forEach(ip => {
     ip.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (lyricMode) { document.getElementById('lyric-input').focus(); return; }
       let pos = parseInt(ip.dataset.insert);
       const p = placeholderIndex();
       dropPlaceholder();
@@ -641,52 +635,10 @@ function bindScoreEvents() {
   const content = scoreEl.querySelector('.score-content');
   content.addEventListener('click', (e) => {
     if (e.target !== content) return;
+    if (lyricMode) { document.getElementById('lyric-input').focus(); return; }
     dropPlaceholder();
     enterBlank(score.elements.length);
     refresh();
-  });
-
-  scoreEl.querySelectorAll('.lyric-input').forEach(input => {
-    const idx = parseInt(input.dataset.idx);
-    let edited = false;
-
-    input.addEventListener('input', () => {
-      // Snapshot once per edit, before the change, so Undo restores the old lyric
-      if (!edited) { pushHistory(); edited = true; }
-      if (score.elements[idx] === placeholderEl) keepPlaceholder();
-      score.elements[idx].lyric = input.value;
-      input.style.width = Math.max(3, input.value.length + 1) + 'ch';
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        let nextIdx = idx + 1;
-        while (nextIdx < score.elements.length && score.elements[nextIdx].type !== 'note') {
-          nextIdx++;
-        }
-        if (nextIdx < score.elements.length) {
-          editingLyricIdx = nextIdx;
-          selectedIdx = nextIdx;
-          cursorPos = nextIdx + 1;
-        } else {
-          editingLyricIdx = -1;
-        }
-        render();
-      } else if (e.key === 'Escape') {
-        editingLyricIdx = -1;
-        render();
-      }
-    });
-
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (editingLyricIdx === idx) {
-          editingLyricIdx = -1;
-          render();
-        }
-      }, 150);
-    });
   });
 }
 
@@ -698,14 +650,6 @@ function insertElement(el) {
   score.elements.splice(cursorPos, 0, el);
   focusSymbol(cursorPos);
   refresh();
-}
-
-function startLyricEdit(idx) {
-  if (score.elements[idx] === placeholderEl) placeholderEl = null;
-  selectedIdx = idx;
-  cursorPos = idx + 1;
-  editingLyricIdx = idx;
-  render();
 }
 
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
@@ -722,7 +666,6 @@ function moveLeft() {
     selectedIdx = -1;
     cursorPos = 0;
   }
-  editingLyricIdx = -1;
   render();
   scrollSelectionIntoView();
 }
@@ -740,7 +683,6 @@ function moveRight() {
     selectedIdx = cursorPos;
     cursorPos++;
   }
-  editingLyricIdx = -1;
   render();
   scrollSelectionIntoView();
 }
@@ -783,13 +725,7 @@ function initToolbar() {
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
 
-  document.getElementById('btn-lyric').addEventListener('click', () => {
-    if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
-      startLyricEdit(selectedIdx);
-    } else if (cursorPos > 0 && score.elements[cursorPos - 1]?.type === 'note') {
-      startLyricEdit(cursorPos - 1);
-    }
-  });
+  document.getElementById('btn-lyric').addEventListener('click', () => enterLyricMode());
 
   document.getElementById('btn-palette').addEventListener('click', (e) => {
     const palette = document.getElementById('palette');
@@ -1118,13 +1054,11 @@ function optionIndexOf(el, idx, options) {
 function focusSymbol(idx) {
   selectedIdx = idx;
   cursorPos = idx + 1;
-  editingLyricIdx = -1;
 }
 
 function focusEmptySlot(pos) {
   selectedIdx = -1;
   cursorPos = pos;
-  editingLyricIdx = -1;
 }
 
 // The symbol a blank spot starts with: Ison, or in martyria mode the
@@ -1419,6 +1353,192 @@ function renderPad() {
 }
 
 // ============================================================================
+// LYRIC MODE
+// ============================================================================
+
+// One text field holds the words from a starting note on; every change lays
+// its syllables under the notes again (lyrics.js). The field sits outside
+// the score, which re-renders, so it keeps focus and the phone keyboard
+// stays up: space simply moves the next letters to the next note.
+
+let lyricMode = null;        // { start, edited } while open
+
+let lyricAuto = true;
+try { lyricAuto = localStorage.getItem('gorgon-lyric-auto') !== 'off'; } catch (e) { /* no storage */ }
+
+const lyricInput = () => document.getElementById('lyric-input');
+
+// Indices of the notes from `start` on: the ones the text is laid under
+function lyricNotes(start) {
+  const out = [];
+  for (let i = start; i < score.elements.length; i++) {
+    if (score.elements[i].type === 'note') out.push(i);
+  }
+  return out;
+}
+
+// Where Lyric starts: the note in focus, else the first note after the
+// last one that has words, so pressing Lyric again carries on
+function lyricStartNote() {
+  const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  if (el?.type === 'note') return selectedIdx;
+  const notes = lyricNotes(0);
+  if (!notes.length) return -1;
+  let last = -1;
+  notes.forEach((i, k) => { if (score.elements[i].lyric) last = k; });
+  return notes[last + 1] ?? notes[0];
+}
+
+function enterLyricMode(idx) {
+  const target = idx === undefined ? null : score.elements[idx];
+  // Words for the pending note make it a real one; otherwise it goes
+  if (target && target === placeholderEl) keepPlaceholder();
+  dropPlaceholder();
+  idx = target ? score.elements.indexOf(target) : lyricStartNote();
+  if (idx < 0 || score.elements[idx]?.type !== 'note') {
+    toast('Write the notes first, then their words.');
+    return;
+  }
+  lyricMode = { start: idx, edited: false };
+  document.body.classList.add('lyric-mode');
+  document.getElementById('lyric-bar').hidden = false;
+  document.getElementById('palette').hidden = true;
+  const signs = document.getElementById('btn-palette');
+  signs.classList.remove('active');
+  signs.setAttribute('aria-expanded', 'false');
+  renderLyricAuto();
+  // Focus inside the tap that opened lyric mode, or iOS keeps the keyboard down
+  lyricInput().focus();
+  startLyricsAt(idx, target !== null);
+}
+
+// (Re)start the text at a note: what is already under the notes from there.
+// Opened on a particular note, its syllable is selected so typing replaces
+// it; otherwise the caret goes to the end to carry on.
+function startLyricsAt(idx, selectFirst = true) {
+  lyricMode.start = idx;
+  const input = lyricInput();
+  input.value = buildLyricText(lyricNotes(idx).map(i => score.elements[i].lyric));
+  const first = selectFirst ? lyricSlots()[0] : null;
+  if (first) input.setSelectionRange(first.start, first.end);
+  else input.setSelectionRange(input.value.length, input.value.length);
+  input.scrollLeft = first ? 0 : input.scrollWidth;
+  showLyricCaret(undefined, true);
+}
+
+function exitLyricMode() {
+  if (!lyricMode) return;
+  lyricMode = null;
+  document.body.classList.remove('lyric-mode');
+  document.getElementById('lyric-bar').hidden = true;
+  lyricInput().blur();
+  render();
+}
+
+function lyricSlots() {
+  return parseLyricText(lyricInput().value, { auto: lyricAuto });
+}
+
+// Lay the text under the notes
+function applyLyrics() {
+  if (!lyricMode.edited) { pushHistory(); lyricMode.edited = true; }
+  const slots = lyricSlots();
+  lyricNotes(lyricMode.start).forEach((i, k) => {
+    score.elements[i].lyric = slots[k]?.text || '';
+  });
+  showLyricCaret(slots, true);
+}
+
+// Focus the note the caret is on, and say where the text stands
+function showLyricCaret(slots = lyricSlots(), force = false) {
+  const input = lyricInput();
+  const notes = lyricNotes(lyricMode.start);
+  const k = slotAtCaret(slots, input.value, input.selectionStart ?? input.value.length);
+  const target = notes[Math.min(k, notes.length - 1)];
+  const status = document.getElementById('lyric-status');
+  const over = slots.length - notes.length;
+  if (over > 0) status.textContent = `${over} left over`;
+  else if (k >= notes.length) status.textContent = 'No more notes';
+  else status.textContent = `Note ${k + 1} / ${notes.length}`;
+  status.title = over > 0 ? `${over} syllable${over > 1 ? 's' : ''} past the last note (not kept)` : '';
+  status.classList.toggle('warn', over > 0 || k >= notes.length);
+  if (!force && target === selectedIdx) return;
+  selectedIdx = target;
+  cursorPos = target + 1;
+  render();
+  scrollNoteIntoArea(target);
+}
+
+// scrollIntoView would also scroll the pinned page under the iOS keyboard,
+// so scroll only the score area
+function scrollNoteIntoArea(idx) {
+  const area = document.getElementById('score-area');
+  const col = area.querySelector(`.note-col[data-idx="${idx}"]`);
+  if (!col) return;
+  const a = area.getBoundingClientRect();
+  const c = col.getBoundingClientRect();
+  const margin = 12;
+  if (c.top < a.top + margin) area.scrollTop -= a.top + margin - c.top;
+  else if (c.bottom > a.bottom - margin) area.scrollTop += c.bottom - (a.bottom - margin);
+}
+
+function insertIntoLyrics(str) {
+  const input = lyricInput();
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  input.setRangeText(str, start, end, 'end');
+  applyLyrics();
+}
+
+function renderLyricAuto() {
+  const b = document.getElementById('lyric-auto');
+  b.setAttribute('aria-pressed', String(lyricAuto));
+  b.classList.toggle('active', lyricAuto);
+}
+
+function initLyricMode() {
+  const input = lyricInput();
+  input.addEventListener('input', applyLyrics);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      exitLyricMode();
+    }
+  });
+  // Caret moved (arrows, tap in the field): follow it in the score
+  document.addEventListener('selectionchange', () => {
+    if (lyricMode && document.activeElement === input) showLyricCaret();
+  });
+
+  // The bar's buttons must not take focus from the field, or the phone
+  // keyboard drops between keystrokes
+  const bar = document.getElementById('lyric-bar');
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) e.preventDefault();
+  });
+  bar.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) e.preventDefault();
+  });
+
+  document.getElementById('lyric-hyphen').addEventListener('click', () => {
+    input.focus();
+    insertIntoLyrics('-');
+  });
+  document.getElementById('lyric-hold').addEventListener('click', () => {
+    input.focus();
+    insertIntoLyrics('_');
+  });
+  document.getElementById('lyric-auto').addEventListener('click', () => {
+    lyricAuto = !lyricAuto;
+    try { localStorage.setItem('gorgon-lyric-auto', lyricAuto ? 'on' : 'off'); } catch (e) { /* no storage */ }
+    renderLyricAuto();
+    input.focus();
+    applyLyrics();
+  });
+  document.getElementById('lyric-done').addEventListener('click', exitLyricMode);
+}
+
+// ============================================================================
 // KEYBOARD
 // ============================================================================
 
@@ -1436,10 +1556,8 @@ function initKeyboard() {
       e.preventDefault();
       document.getElementById('btn-delete').click();
     } else if (e.key === 'Enter') {
-      if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note') {
-        editingLyricIdx = selectedIdx;
-        render();
-      }
+      e.preventDefault();
+      enterLyricMode();
     } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       undo();
@@ -1459,6 +1577,7 @@ function openScore(next) {
     const prev = localStorage.getItem('gorgon-score-v2');
     if (prev) localStorage.setItem('gorgon-score-v2-previous', prev);
   } catch (e) { /* storage refused */ }
+  exitLyricMode();
   score = next;
   score.metadata = score.metadata || {};
   if (!score.metadata.id) score.metadata.id = newDocId();
@@ -1556,6 +1675,7 @@ async function init() {
   initToolbar();
   initKeyboard();
   initComposePad();
+  initLyricMode();
   // Open on a blank spot at the end of the score
   enterBlank(score.elements.length);
   reanalyze();
