@@ -1124,3 +1124,63 @@ body.lyric-mode #palette { display: none; }
   white-space: nowrap;
 }
 .lyric-status.warn { color: var(--warn); }
+
+/* A pair of notes one neume can write: the combined neume stands small and
+   orange over the join of the two; tapping it combines them */
+.note-col.combine-first { padding-top: 1.75rem; }
+.combine-first + .insert-point + .note-col { padding-top: 1.75rem; }
+.combine-mark {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--accent-mid);
+  border-radius: 999px;
+  background: var(--score-bg);
+  color: var(--accent2);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* A finger-sized target around the small mark */
+.combine-mark::before {
+  content: '';
+  position: absolute;
+  inset: -0.6rem -0.5rem;
+}
+.combine-mark:hover, .combine-mark:active { background: var(--accent-soft); }
+.combine-glyph {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1rem;
+  line-height: 1;
+}
+.combine-mark .combine-glyph { font-size: 1.05rem; }
+
+/* The pad's Combine pill, bottom-right */
+.pad-mode-br { left: auto; right: 0.6rem; }
+.pad-combine {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+.pad-combine[hidden] { display: none; }
+.pad-combine .combine-glyph { font-size: 1.15rem; color: var(--accent2); }
+
+@media print {
+  .combine-mark { display: none; }
+  .note-col.combine-first,
+  .combine-first + .insert-point + .note-col { padding-top: 0.1rem; }
+}
+@media (pointer: coarse) {
+  .combine-mark { left: calc(100% + 7px); }
+}

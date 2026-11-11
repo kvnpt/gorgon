@@ -564,12 +564,16 @@ function render() {
   // Insert point at start
   html += insertPointHtml(0);
 
+  // Pairs of notes one neume can write (not while typing words)
+  const pairs = lyricMode ? [] : combinablePairs();
+  const pairAt = new Map(pairs.map(p => [p.idx, p]));
+
   for (let i = 0; i < score.elements.length; i++) {
     const el = score.elements[i];
     const analysis = analysisResult[i] || null;
 
     if (el.type === 'note') {
-      html += noteColHtml(el, i, analysis);
+      html += noteColHtml(el, i, analysis, pairAt.get(i));
     } else if (el.type === 'martyria') {
       html += martyriaColHtml(el, i, analysis);
     } else if (el.type === 'barline') {
@@ -640,12 +644,22 @@ function noteGlyphHtml(el) {
     + `<span class="neume-support-below">${below}</span>`;
 }
 
-function noteColHtml(el, idx, analysis) {
+// The mark over a combinable pair: the combined neume, small and orange,
+// standing over the join of the two notes
+function combineMarkHtml(pair) {
+  const char = getNeumeChar(pair.merged);
+  const label = esc(`Combine into ${pair.rule.name.toLowerCase()}`);
+  return `<button type="button" class="combine-mark" data-combine="${pair.idx}" title="${label}" aria-label="${label}">`
+    + `<span class="combine-glyph">${char}</span></button>`;
+}
+
+function noteColHtml(el, idx, analysis, pair) {
   const char = neumeRun(el);
   const isSelected = idx === selectedIdx;
   const hasWarning = analysis?.warnings?.length > 0;
   const pending = el === placeholderEl ? ' placeholder' : '';
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}`;
+  const combine = pair ? ' combine-first' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -655,6 +669,7 @@ function noteColHtml(el, idx, analysis) {
   const lyricHtml = lyricSpanHtml(el.lyric);
 
   return `<div class="${cls}" data-idx="${idx}">
+    ${pair ? combineMarkHtml(pair) : ''}
     ${aboveHtml}
     <span class="neume${neumeClasses(el)}">${char}</span>
     ${belowHtml}
@@ -698,6 +713,15 @@ function esc(str) {
 
 function bindScoreEvents() {
   const scoreEl = document.getElementById('score');
+
+  // The mark over a pair of notes combines them into one neume
+  scoreEl.querySelectorAll('.combine-mark').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.combine);
+      if (combinePair(idx)) { haptic(); refresh(); }
+    });
+  });
 
   scoreEl.querySelectorAll('.note-col').forEach(col => {
     col.addEventListener('click', (e) => {
@@ -1067,6 +1091,81 @@ function fitTimeSign(el) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Combined neumes: two notes in a row that one neume writes more simply.
+//   Running elaphron: an apostrophos with a gorgon, then another apostrophos
+//     (two steps down; the running elaphron carries the first gorgon itself,
+//     so only the second note's time sign is written on it)
+//   Oligon with kentemata: two oligons in a row (two steps up)
+// The score marks each such pair and a tap (on the mark or the pad's
+// Combine pill) swaps the two notes for the one neume.
+// ----------------------------------------------------------------------------
+const SIMPLE_GORGONS = ['gorgonAbove', 'gorgonBelow'];
+const COMBINE_RULES = [
+  {
+    result: 'RunningElaphron', name: 'Running elaphron',
+    first: (a) => a.quantitativeNeume === 'Apostrophos'
+      && SIMPLE_GORGONS.includes(a.gorgonNeume) && !a.timeNeume,
+    second: (b) => b.quantitativeNeume === 'Apostrophos',
+  },
+  {
+    result: 'OligonPlusKentemata', name: 'Oligon with kentemata',
+    first: (a) => a.quantitativeNeume === 'Oligon' && !a.gorgonNeume && !a.timeNeume,
+    second: (b) => b.quantitativeNeume === 'Oligon',
+  },
+];
+
+// The second note folds into the first, so it may only carry signs the
+// combined neume keeps: its time sign, and no syllable of its own
+const HELD_LYRICS = ['', '_', '-'];
+function combinedNote(a, b) {
+  if (a?.type !== 'note' || b?.type !== 'note') return null;
+  if (a === placeholderEl || b === placeholderEl) return null;
+  const rule = COMBINE_RULES.find(r => r.first(a) && r.second(b));
+  if (!rule) return null;
+  if (b.fthora || b.accidental || b.vocalExpression || b.ison || b.measureBar) return null;
+  if (!HELD_LYRICS.includes(b.lyric || '')) return null;
+  if (a.vocalExpression && !qualityAllowed(a.vocalExpression, rule.result)) return null;
+  const merged = { ...a, quantitativeNeume: rule.result,
+    timeNeume: b.timeNeume || null, gorgonNeume: b.gorgonNeume || null };
+  delete merged._glyph;
+  delete merged._codepoint;
+  fitTimeSign(merged);
+  // A time sign the combined neume cannot carry would change the rhythm
+  if (merged.timeNeume !== (b.timeNeume || null) || merged.gorgonNeume !== (b.gorgonNeume || null)) return null;
+  return { rule, merged };
+}
+
+// Every combinable pair, left to right; a note belongs to one pair at most
+function combinablePairs() {
+  const pairs = [];
+  const els = score.elements;
+  for (let i = 0; i < els.length - 1; i++) {
+    const c = combinedNote(els[i], els[i + 1]);
+    if (c) { pairs.push({ idx: i, ...c }); i++; }
+  }
+  return pairs;
+}
+
+// The pair the composer is working on: the one the focused note belongs
+// to, or the one just finished before a blank spot
+function pairAtFocus(pairs = combinablePairs()) {
+  const focusEl = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  const pending = !focusEl || focusEl === placeholderEl;
+  const at = pending ? (selectedIdx >= 0 ? selectedIdx : cursorPos) - 1 : selectedIdx;
+  return pairs.find(p => p.idx === at || p.idx + 1 === at) || null;
+}
+
+function combinePair(idx) {
+  const c = combinedNote(score.elements[idx], score.elements[idx + 1]);
+  if (!c) return false;
+  pushHistory();
+  score.elements.splice(idx, 2, c.merged);
+  if (selectedIdx > idx) selectedIdx--;
+  if (cursorPos > idx + 1) cursorPos--;
+  return true;
+}
+
 function intervalOf(el) {
   return theory.neumeValues?.neumeValues?.[el.quantitativeNeume] ?? 0;
 }
@@ -1311,6 +1410,14 @@ function initComposePad() {
   }
   setPadMode('quantity');
 
+  const combineBtn = document.getElementById('pad-combine');
+  combineBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  combineBtn.addEventListener('click', () => {
+    if (!combinePair(parseInt(combineBtn.dataset.combine))) return;
+    haptic();
+    refresh();
+  });
+
   attachPad(pad, {
     onTap() {
       if (selectedIdx >= 0) {
@@ -1393,6 +1500,7 @@ function renderPad() {
   pad.classList.toggle('quality-mode', padMode === 'quality');
   pad.classList.toggle('time-mode', padMode === 'time');
   glyphEl.classList.remove('martyria');
+  renderPadCombine();
 
   if (el && el.type === 'note' && padMode === 'quality') {
     const a = analysisResult[selectedIdx];
@@ -1467,6 +1575,19 @@ function renderPad() {
         : 'Swipe up or down to start with Ison';
     }
   }
+}
+
+// The pad's Combine pill (bottom-right): offered while the pair being
+// composed can be written as one neume, so it is under the thumb
+function renderPadCombine() {
+  const btn = document.getElementById('pad-combine');
+  const pair = lyricMode ? null : pairAtFocus();
+  btn.hidden = !pair;
+  if (!pair) { delete btn.dataset.combine; return; }
+  btn.dataset.combine = pair.idx;
+  btn.querySelector('.combine-glyph').textContent = getNeumeChar(pair.merged);
+  btn.title = `Combine into ${pair.rule.name.toLowerCase()}`;
+  btn.setAttribute('aria-label', btn.title);
 }
 
 // ============================================================================
