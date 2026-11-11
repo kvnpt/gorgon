@@ -90,6 +90,21 @@
     </div>
   </div>
 
+  <!-- Lyric mode: one field for the words, laid under the notes as you type -->
+  <div id="lyric-bar" hidden>
+    <div class="lyric-row">
+      <input type="text" id="lyric-input" aria-label="Words" placeholder="Type the words · space = next note"
+             autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done">
+      <button type="button" id="lyric-hyphen" class="lyric-key" title="Break the word here" aria-label="Hyphen: break the word here">-</button>
+    </div>
+    <div class="lyric-row">
+      <button type="button" id="lyric-hold" class="action-btn" title="Hold the syllable over one more note">Hold _</button>
+      <button type="button" id="lyric-auto" class="action-btn" aria-pressed="true" title="Split words into syllables automatically">Auto-split</button>
+      <span id="lyric-status" class="lyric-status" aria-live="polite"></span>
+      <button type="button" id="lyric-done" class="action-btn">Done</button>
+    </div>
+  </div>
+
   <!-- Account: the scores saved to a signed-in account (account.js) -->
   <div id="account-sheet" class="sheet" hidden>
     <div class="sheet-card" role="dialog" aria-modal="true" aria-label="Your scores">
