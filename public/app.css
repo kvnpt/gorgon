@@ -1057,11 +1057,12 @@ body.keyboard-open #compose { display: none; }
   .note-col.placeholder { display: none; }
 }
 
-/* Corner toggles: Quant. top-left, Qual. top-right, Mart. bottom-left */
+/* Corner toggles: Quant. (time signs) top-left, Qual. top-right, Mart. bottom-left;
+   none on = swipes step the interval */
 .pad-mode-tl { top: 0.6rem; bottom: auto; }
 .pad-mode-tr { top: 0.6rem; bottom: auto; left: auto; right: 0.6rem; }
 
-/* Quantity and quality fill with the text colour when on (agora pills);
+/* Quant. and Qual. fill with the text colour when on (agora pills);
    martyria stays red, the martyria colour */
 .pad-mode-tl.active,
 .pad-mode-tr.active {
