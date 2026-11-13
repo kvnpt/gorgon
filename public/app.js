@@ -357,6 +357,22 @@ function getGlyphsForCategory(cat) {
   return result;
 }
 
+// Zero-width glyphs are marks the font attaches to the neume before them.
+// Measured once the font is in; until then nothing counts as a mark.
+const markGlyphs = new Map();
+let measureCtx = null;
+function isMarkGlyph(char) {
+  if (!document.fonts?.check('32px Neanes')) return false;
+  if (!markGlyphs.has(char)) {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = '32px Neanes';
+    markGlyphs.set(char, measureCtx.measureText(char).width < 1);
+  }
+  return markGlyphs.get(char);
+}
+document.fonts?.load('32px Neanes')
+  .then(() => { if (Object.keys(glyphnames).length) render(); }).catch(() => {});
+
 function renderPalette() {
   const grid = document.getElementById('palette-grid');
   if (currentCategory === 'martyria') {
@@ -371,7 +387,10 @@ function renderPalette() {
     : (cursorPos > 0 ? analysisResult[cursorPos - 1] : null);
 
   grid.innerHTML = glyphs.map(g => {
-    const char = codepointToChar(g.codepoint);
+    // A sign the font hangs on a neume (zero width) is shown on an Ison:
+    // on its own Safari draws nothing and Chrome draws it off the tile
+    const onBase = isMarkGlyph(codepointToChar(g.codepoint));
+    const char = (onBase ? glyphChar('ison') : '') + codepointToChar(g.codepoint);
     const label = glyphLabel(g.name);
 
     // Check if this neume is valid in current context (for fthores category)
@@ -390,7 +409,7 @@ function renderPalette() {
 
     const cls = `palette-btn${invalid ? ' invalid' : ''}`;
     return `<button class="${cls}" data-glyph="${g.name}" data-cp="${g.codepoint}" title="${label}"${invalid ? ' disabled' : ''}>
-      <span class="glyph">${char}</span>
+      <span class="glyph${onBase ? ' on-base' : ''}">${char}</span>
       <span class="glyph-name">${label}</span>
     </button>`;
   }).join('');
@@ -688,6 +707,24 @@ function combineMarkHtml(pair) {
     + `</span>`;
 }
 
+// Signs hung on a neume (antikenoma, heteron…) take no width of their own
+// and can reach past it. Room on either side for the ink, in em.
+const inkCache = new Map();
+function inkSidesStyle(run) {
+  if (!document.fonts?.check('32px Neanes')) return '';
+  if (!inkCache.has(run)) {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = '32px Neanes';
+    const m = measureCtx.measureText(run);
+    const left = Math.max(0, m.actualBoundingBoxLeft) / 32;
+    const right = Math.max(0, m.actualBoundingBoxRight - m.width) / 32;
+    const em = (v) => (v > 0.02 ? `${(v + 0.05).toFixed(2)}em` : '0');
+    inkCache.set(run, left > 0.02 || right > 0.02
+      ? ` style="padding-left:${em(left)};padding-right:${em(right)}"` : '');
+  }
+  return inkCache.get(run);
+}
+
 function noteColHtml(el, idx, analysis, pair) {
   const char = neumeRun(el);
   const isSelected = idx === selectedIdx;
@@ -706,7 +743,7 @@ function noteColHtml(el, idx, analysis, pair) {
   return `<div class="${cls}" data-idx="${idx}">
     ${pair ? combineMarkHtml(pair) : ''}
     ${aboveHtml}
-    <span class="neume${neumeClasses(el)}">${char}</span>
+    <span class="neume${neumeClasses(el)}"${inkSidesStyle(char)}>${char}</span>
     ${belowHtml}
     ${lyricHtml}
   </div>`;
@@ -1121,11 +1158,9 @@ function klasmaFor(neume) {
   return 'klasmaAbove';
 }
 
-// Neanes leaves the apli off the descending neumes on an oligon, but the
-// dot under them is how Kevin's scores lengthen them (oligon + apostrophos
-// with a dot under it), so it is allowed there
 function apliAllowed(neume) {
-  return !isKentemata(neume) && neume !== 'PetastiPlusRunningElaphron';
+  return !isKentemata(neume) && neume !== 'PetastiPlusRunningElaphron'
+    && !OLIGON_DESCENDING.includes(neume);
 }
 
 function longTimeAllowed(neume) {     // dipli, tripli, tetrapli

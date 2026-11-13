@@ -766,6 +766,11 @@ body.keyboard-open #compose { display: none; }
   color: var(--text);
 }
 
+/* A sign shown on an Ison: room for what hangs above and below it */
+.palette-btn .glyph.on-base {
+  padding: 0.45em 0 0.6em;
+}
+
 .palette-btn:active .glyph {
   color: var(--bg);
 }
