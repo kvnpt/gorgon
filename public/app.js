@@ -305,6 +305,24 @@ function createMartyriaOn(noteValue) {
   return { type: 'martyria', auto: false, noteValue };
 }
 
+// A leimma is an empty beat (a rest) of its own, not a sign on a note.
+// Swipes step it through one to four beats.
+const LEIMMATA = ['leimma1', 'leimma2', 'leimma3', 'leimma4'];
+const isLeimma = (name) => /^leimma[1-4]$/.test(name || '');
+
+function createRest(glyph = 'leimma1') {
+  return { type: 'rest', glyph };
+}
+
+function restBeats(el) {
+  return LEIMMATA.indexOf(el.glyph) + 1 || 1;
+}
+
+function restLabel(el) {
+  const n = restBeats(el);
+  return `${n} beat${n > 1 ? 's' : ''}`;
+}
+
 
 // ============================================================================
 // SUPPORT SYMBOL PLACEMENT
@@ -462,6 +480,19 @@ function initPaletteGrid() {
     const glyphName = btn.dataset.glyph;
     const cp = btn.dataset.cp;
 
+    // A leimma (empty beat) stands on its own, after the focused note or in
+    // place of a blank spot's pending Ison
+    if (isLeimma(glyphName)) {
+      if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'rest') {
+        pushHistory();
+        score.elements[selectedIdx].glyph = glyphName;
+        refresh();
+      } else {
+        insertElement(createRest(glyphName));
+      }
+      return;
+    }
+
     // If a neume is selected and this is a support category, add as modifier
     if (selectedIdx >= 0 && score.elements[selectedIdx]?.type === 'note'
         && ['temporal', 'quality', 'fthores'].includes(currentCategory)) {
@@ -576,6 +607,8 @@ function render() {
       html += noteColHtml(el, i, analysis, pairAt.get(i));
     } else if (el.type === 'martyria') {
       html += martyriaColHtml(el, i, analysis);
+    } else if (el.type === 'rest') {
+      html += restColHtml(el, i);
     } else if (el.type === 'barline') {
       html += `<div class="barline" data-idx="${i}"></div>`;
     } else if (el.type === 'sectionBreak') {
@@ -695,6 +728,16 @@ function martyriaColHtml(el, idx, analysis) {
   const title = esc(`Martyria ${analysis?.noteName || ''}${el.auto === false ? '' : ' (auto)'}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
     <span class="martyria">${chars ? chars.note + chars.root : '?'}</span>
+    <span class="lyric">&nbsp;</span>
+  </div>`;
+}
+
+function restColHtml(el, idx) {
+  const isSelected = idx === selectedIdx;
+  const cls = `note-col rest-col${isSelected ? ' selected' : ''}`;
+  const title = esc(`Leimma · ${restLabel(el)}`);
+  return `<div class="${cls}" data-idx="${idx}" title="${title}">
+    <span class="neume">${glyphChar(el.glyph)}</span>
     <span class="lyric">&nbsp;</span>
   </div>`;
 }
@@ -1078,9 +1121,11 @@ function klasmaFor(neume) {
   return 'klasmaAbove';
 }
 
+// Neanes leaves the apli off the descending neumes on an oligon, but the
+// dot under them is how Kevin's scores lengthen them (oligon + apostrophos
+// with a dot under it), so it is allowed there
 function apliAllowed(neume) {
-  return !isKentemata(neume) && neume !== 'PetastiPlusRunningElaphron'
-    && !OLIGON_DESCENDING.includes(neume);
+  return !isKentemata(neume) && neume !== 'PetastiPlusRunningElaphron';
 }
 
 function longTimeAllowed(neume) {     // dipli, tripli, tetrapli
@@ -1102,8 +1147,10 @@ function timeOptions(el) {
       { rank: -1, time: null, gorgon: 'gorgonAbove' });
   }
   options.push({ rank: 0, time: null, gorgon: null });
-  const beat = klasmaFor(n) || (apliAllowed(n) ? 'apli' : null);
-  if (beat) options.push({ rank: 1, time: beat, gorgon: null });
+  // A beat more: the klasma, then the dot under the note (apli)
+  const klasma = klasmaFor(n);
+  if (klasma) options.push({ rank: 1, time: klasma, gorgon: null });
+  if (apliAllowed(n)) options.push({ rank: 1, time: 'apli', gorgon: null });
   if (longTimeAllowed(n)) {
     options.push({ rank: 2, time: 'dipli', gorgon: null },
       { rank: 3, time: 'tripli', gorgon: null },
@@ -1118,10 +1165,15 @@ function timeRankOf(el) {
   return 0;
 }
 
-// The next rung up (dir 1) or down (dir -1) from the note's time sign
+// The next rung up (dir 1) or down (dir -1) from the note's time sign.
+// Klasma and apli share a rank, so the rung is found by its sign; a sign
+// that is not on the ladder (one from the Signs drawer) steps by rank.
 function timeStep(el, dir) {
   const rank = timeRankOf(el);
   const options = timeOptions(el);
+  const sign = el.gorgonNeume || el.timeNeume || null;
+  const i = options.findIndex(o => (o.gorgon || o.time) === sign);
+  if (i >= 0) return options[i + dir] || null;
   return dir > 0
     ? options.find(o => o.rank > rank) || null
     : options.reverse().find(o => o.rank < rank) || null;
@@ -1567,6 +1619,12 @@ function initComposePad() {
           el.vocalExpression = null;
         }
         fitTimeSign(el);
+      } else if (el.type === 'rest') {
+        const i = restBeats(el) - 1;
+        const next = Math.max(0, Math.min(LEIMMATA.length - 1, i + dir));
+        if (next === i) return;
+        pushHistory();
+        el.glyph = LEIMMATA[next];
       } else if (el.type === 'martyria' && (padMode === 'quantity' || padMode === 'martyria')) {
         const options = martyriaOptions(selectedIdx);
         const i = optionIndexOf(el, selectedIdx, options);
@@ -1664,6 +1722,15 @@ function renderPad() {
     hintEl.textContent = padMode === 'quality' || padMode === 'time'
       ? `${padMode === 'time' ? 'Time' : 'Quality'} signs go on notes · Tap to commit`
       : [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
+  } else if (el && el.type === 'rest') {
+    const i = restBeats(el) - 1;
+    pad.classList.remove('empty');
+    glyphEl.innerHTML = `<span class="pad-neume">${glyphChar(el.glyph)}</span>`;
+    valueEl.textContent = `Leimma · ${restLabel(el)}`;
+    noteEl.textContent = '';
+    const up = i < LEIMMATA.length - 1 ? `↑ ${i + 2} beats` : '';
+    const down = i > 0 ? `↓ ${i} beat${i > 1 ? 's' : ''}` : '';
+    hintEl.textContent = [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el) {
     pad.classList.remove('empty');
     glyphEl.textContent = '';
