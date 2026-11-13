@@ -836,32 +836,7 @@ function bindScoreEvents() {
   scoreEl.querySelectorAll('.note-col').forEach(col => {
     col.addEventListener('click', (e) => {
       e.stopPropagation();
-      let idx = parseInt(col.dataset.idx);
-      // In lyric mode a tap on a note starts the text from that note
-      if (lyricMode) {
-        if (score.elements[idx]?.type === 'note') startLyricsAt(idx);
-        document.getElementById('lyric-input').focus();
-        return;
-      }
-      // Leaving a blank spot drops its untouched placeholder
-      if (score.elements[idx] !== placeholderEl) {
-        const target = score.elements[idx];
-        dropPlaceholder();
-        idx = score.elements.indexOf(target);
-      }
-      // Tapping the syllable line of a note goes straight to lyric editing
-      const tappedLyric = e.target.classList.contains('lyric');
-      if (tappedLyric && score.elements[idx]?.type === 'note') {
-        enterLyricMode(idx);
-        return;
-      }
-      if (selectedIdx === idx) {
-        if (score.elements[idx]?.type === 'note') enterLyricMode(idx);
-      } else {
-        selectedIdx = idx;
-        cursorPos = idx + 1;
-        render();
-      }
+      tapNote(parseInt(col.dataset.idx));
     });
   });
 
@@ -888,6 +863,57 @@ function bindScoreEvents() {
     enterBlank(score.elements.length);
     refresh();
   });
+}
+
+// A tap on a symbol in the score. The first tap only selects it (for the
+// pad); a tap on the symbol already selected opens its words.
+function tapNote(idx) {
+  // In lyric mode a tap on a note starts the text from that note
+  if (lyricMode) {
+    if (score.elements[idx]?.type === 'note') startLyricsAt(idx);
+    lyricInput().focus();
+    return;
+  }
+  // Leaving a blank spot drops its untouched placeholder
+  if (score.elements[idx] !== placeholderEl) {
+    const target = score.elements[idx];
+    dropPlaceholder();
+    idx = score.elements.indexOf(target);
+  }
+  if (selectedIdx === idx) {
+    if (score.elements[idx]?.type === 'note') enterLyricMode(idx);
+  } else {
+    selectedIdx = idx;
+    cursorPos = idx + 1;
+    render();
+  }
+}
+
+// A quick second tap on the same symbol is the lyric tap. iOS would take it
+// as a double-tap zoom (touch-action alone does not always stop it inside
+// the scrolling score), so cancel it and handle the tap here; focusing the
+// lyric field inside this touchend still brings the keyboard up.
+function initDoubleTap() {
+  const area = document.getElementById('score-area');
+  let last = null;
+  area.addEventListener('touchend', (e) => {
+    if (e.touches.length || e.changedTouches.length !== 1) { last = null; return; }
+    const t = e.changedTouches[0];
+    const col = e.target.closest?.('.note-col');
+    const idx = col ? parseInt(col.dataset.idx) : -1;
+    // The first tap may re-render and renumber, so compare the symbol itself
+    const el = idx >= 0 ? score.elements[idx] : null;
+    const now = e.timeStamp;
+    const again = last && el && last.el === el && now - last.time < 400
+      && Math.hypot(t.clientX - last.x, t.clientY - last.y) < 30;
+    if (again) {
+      e.preventDefault();       // no zoom, and no click after it
+      last = null;
+      tapNote(idx);
+      return;
+    }
+    last = el ? { el, time: now, x: t.clientX, y: t.clientY } : null;
+  }, { passive: false });
 }
 
 // Insert a symbol from the Signs drawer at the focus. On a blank spot's
@@ -1014,21 +1040,18 @@ function initToolbar() {
     const p = placeholderIndex();
     if (p >= 0 && selectedIdx === p) {
       if (p === 0) return;
-      pushHistory();
-      score.elements.splice(p - 1, 1);
+      if (!deleteKeepingWords(p - 1)) return;
       focusSymbol(p - 1);
       refresh();
       return;
     }
     if (selectedIdx >= 0) {
-      pushHistory();
-      score.elements.splice(selectedIdx, 1);
+      if (!deleteKeepingWords(selectedIdx)) return;
       enterBlank(Math.min(selectedIdx, score.elements.length));
       refresh();
     } else if (cursorPos > 0) {
-      pushHistory();
+      if (!deleteKeepingWords(cursorPos - 1)) return;
       cursorPos--;
-      score.elements.splice(cursorPos, 1);
       reanalyze();
       render();
     }
@@ -1321,9 +1344,34 @@ const ownSyllable = (el) => !HELD_LYRICS.includes(el.lyric || '');
 function lyricShiftEnd(fromIdx) {
   for (let j = fromIdx; j < score.elements.length; j++) {
     const el = score.elements[j];
-    if (el.type === 'note' && !ownSyllable(el)) return j;
+    // The pending note is not kept, so it cannot take words
+    if (el.type === 'note' && el !== placeholderEl && !ownSyllable(el)) return j;
   }
   return -1;
+}
+
+// Delete a symbol but not the words: a note's own syllable moves on to the
+// next note, pushing the words after it along to the first note without a
+// syllable of its own (as when combining). With no such note it is kept.
+function deleteKeepingWords(idx) {
+  const el = score.elements[idx];
+  const own = el?.type === 'note' && ownSyllable(el);
+  const end = own ? lyricShiftEnd(idx + 1) : -1;
+  if (own && end < 0) {
+    toast(`No note after it can take \u201c${el.lyric.replace(/-$/, '')}\u201d. Change its words in Lyric first.`);
+    return false;
+  }
+  pushHistory();
+  if (own) {
+    let carry = el.lyric;
+    for (let j = idx + 1; j <= end; j++) {
+      const n = score.elements[j];
+      if (n.type !== 'note') continue;
+      [n.lyric, carry] = [carry, n.lyric];
+    }
+  }
+  score.elements.splice(idx, 1);
+  return true;
 }
 
 function combinedNote(idx) {
@@ -2013,9 +2061,9 @@ function initLyricMode() {
   });
   document.getElementById('lyric-hold').addEventListener('click', () => {
     input.focus();
-    // A hold goes in before a selected syllable, pushing it (and the rest
-    // of the words) on to the next note, rather than replacing it
-    const at = input.selectionStart ?? input.value.length;
+    // A hold goes in after a selected syllable, holding it over the next
+    // note and pushing the rest of the words on, rather than replacing it
+    const at = input.selectionEnd ?? input.value.length;
     input.setSelectionRange(at, at);
     insertIntoLyrics('_');
   });
@@ -2165,6 +2213,7 @@ async function init() {
   initKeyboard();
   initComposePad();
   initLyricMode();
+  initDoubleTap();
   // Open on a blank spot at the end of the score
   enterBlank(score.elements.length);
   reanalyze();
