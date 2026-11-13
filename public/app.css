@@ -1198,3 +1198,15 @@ body.lyric-mode #palette { display: none; }
 @media (pointer: coarse) {
   .combine-mark { left: calc(100% + 7px); }
 }
+
+/* A toast that offers one action (PDF ready: Share) */
+.toast-action {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+}
