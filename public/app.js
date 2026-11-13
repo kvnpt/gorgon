@@ -2200,6 +2200,9 @@ async function initView() {
   const title = document.getElementById('score-title');
   title.readOnly = true;
   title.tabIndex = -1;
+  const sub = document.getElementById('score-subtitle');
+  sub.readOnly = true;
+  sub.tabIndex = -1;
   document.getElementById('score-mode').disabled = true;
   const body = document.getElementById('score-body');
 

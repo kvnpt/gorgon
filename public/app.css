@@ -1281,7 +1281,9 @@ body.view-mode #score-body { zoom: var(--view-zoom, 1); }
 body.view-mode .score { min-height: 0; }
 body.view-mode .note-col { cursor: default; }
 body.view-mode .note-col:hover { background: none; }
-body.view-mode .score-title { pointer-events: none; }
+body.view-mode .score-title,
+body.view-mode .score-subtitle { pointer-events: none; }
+body.view-mode .score-subtitle-wrap.empty { display: none; }
 body.view-mode .score-mode-label { cursor: default; pointer-events: none; }
 body.view-mode .score-mode-label .chev { display: none; }
 /* Room to scroll the last line up to eye level, and the page bounces as a
