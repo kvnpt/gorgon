@@ -556,7 +556,7 @@ a.header-btn { text-decoration: none; }
   font-size: 1.8rem;
   line-height: 1;
   color: var(--neume-red);
-  padding-bottom: 0.55em;
+  padding-bottom: 0.45em;
   white-space: nowrap;
 }
 
@@ -1054,7 +1054,11 @@ body.keyboard-open #compose { display: none; }
 #palette:not([hidden]) ~ #compose .pad-hint { display: none; }
 
 /* Quality marks (psifiston, omalon…) and apli/dipli hang below the neume,
-   klasma and gorgons sit above it: leave room */
+   klasma and gorgons sit above it. Every neume keeps the same room below,
+   whether it has a mark there or not, so all neumes on a line share one
+   baseline (the line the oligon sits on) and the syllables line up too.
+   Room above only makes the line taller, which keeps the baseline. */
+.score-content .neume { padding-bottom: 0.45em; }
 .neume.has-quality { padding-bottom: 0.45em; }
 .neume.has-above { padding-top: 0.45em; }
 .pad-glyph .pad-neume.has-above { padding-top: 0.3em; }
