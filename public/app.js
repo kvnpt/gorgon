@@ -109,6 +109,7 @@ function undo() {
 }
 
 function reanalyze() {
+  flowLyricTail();
   analysisResult = analyzeScore(score.elements, score.modeKey, theory);
 }
 
@@ -659,6 +660,13 @@ function render() {
     if (!viewOnly) html += insertPointHtml(i + 1);
   }
 
+  // Words still waiting for notes, after the last one
+  if (!viewOnly) {
+    for (const l of lyricTail()) {
+      html += `<div class="note-col lyric-only" aria-hidden="true"><span class="neume">&nbsp;</span>${lyricSpanHtml(l)}</div>`;
+    }
+  }
+
   html += '</div>'; // .score-content
 
   // Analysis info bar (shows current position)
@@ -833,7 +841,7 @@ function bindScoreEvents() {
     });
   });
 
-  scoreEl.querySelectorAll('.note-col').forEach(col => {
+  scoreEl.querySelectorAll('.note-col[data-idx]').forEach(col => {
     col.addEventListener('click', (e) => {
       e.stopPropagation();
       tapNote(parseInt(col.dataset.idx));
@@ -899,7 +907,7 @@ function initDoubleTap() {
   area.addEventListener('touchend', (e) => {
     if (e.touches.length || e.changedTouches.length !== 1) { last = null; return; }
     const t = e.changedTouches[0];
-    const col = e.target.closest?.('.note-col');
+    const col = e.target.closest?.('.note-col[data-idx]');
     const idx = col ? parseInt(col.dataset.idx) : -1;
     // The first tap may re-render and renumber, so compare the symbol itself
     const el = idx >= 0 ? score.elements[idx] : null;
@@ -1341,6 +1349,44 @@ const COMBINE_RULES = [
 const HELD_LYRICS = ['', '_', '-'];
 const ownSyllable = (el) => !HELD_LYRICS.includes(el.lyric || '');
 
+// Words past the last note (score.lyricTail) wait there, shown without
+// symbols, and flow onto the notes written after them: any notes at the
+// end of the score that have no words take the next waiting syllables.
+function lyricTail() {
+  if (!Array.isArray(score.lyricTail)) score.lyricTail = [];
+  return score.lyricTail;
+}
+
+function flowLyricTail() {
+  const tail = lyricTail();
+  if (!tail.length) return;
+  const free = [];
+  for (let j = score.elements.length - 1; j >= 0; j--) {
+    const el = score.elements[j];
+    if (el.type !== 'note' || el === placeholderEl) continue;
+    if (el.lyric) break;
+    free.unshift(el);
+  }
+  for (const el of free) {
+    if (!tail.length) break;
+    el.lyric = tail.shift();
+  }
+}
+
+// Push the words on by one note from fromIdx, starting with `carry`, up to
+// the first note without a syllable of its own; past the last note they
+// join the waiting words
+function pushWordsOn(fromIdx, carry) {
+  const end = lyricShiftEnd(fromIdx);
+  const stop = end < 0 ? score.elements.length - 1 : end;
+  for (let j = fromIdx; j <= stop; j++) {
+    const n = score.elements[j];
+    if (n.type !== 'note' || n === placeholderEl) continue;
+    [n.lyric, carry] = [carry, n.lyric];
+  }
+  if (end < 0 && ownSyllable({ lyric: carry })) lyricTail().unshift(carry);
+}
+
 function lyricShiftEnd(fromIdx) {
   for (let j = fromIdx; j < score.elements.length; j++) {
     const el = score.elements[j];
@@ -1352,24 +1398,11 @@ function lyricShiftEnd(fromIdx) {
 
 // Delete a symbol but not the words: a note's own syllable moves on to the
 // next note, pushing the words after it along to the first note without a
-// syllable of its own (as when combining). With no such note it is kept.
+// syllable of its own (as when combining), or past the last note.
 function deleteKeepingWords(idx) {
   const el = score.elements[idx];
-  const own = el?.type === 'note' && ownSyllable(el);
-  const end = own ? lyricShiftEnd(idx + 1) : -1;
-  if (own && end < 0) {
-    toast(`No note after it can take \u201c${el.lyric.replace(/-$/, '')}\u201d. Change its words in Lyric first.`);
-    return false;
-  }
   pushHistory();
-  if (own) {
-    let carry = el.lyric;
-    for (let j = idx + 1; j <= end; j++) {
-      const n = score.elements[j];
-      if (n.type !== 'note') continue;
-      [n.lyric, carry] = [carry, n.lyric];
-    }
-  }
+  if (el?.type === 'note' && ownSyllable(el)) pushWordsOn(idx + 1, el.lyric);
   score.elements.splice(idx, 1);
   return true;
 }
@@ -1384,7 +1417,6 @@ function combinedNote(idx) {
   const rule = typeof found.result === 'function' ? { ...found, result: found.result(a, b) } : found;
   if (!NEUME_TO_SBMUFL[rule.result]) return null;
   if (b.fthora || b.accidental || b.vocalExpression || b.ison || b.measureBar) return null;
-  if (ownSyllable(b) && lyricShiftEnd(idx + 2) < 0) return null;
   if (a.vocalExpression && !qualityAllowed(a.vocalExpression, rule.result)) return null;
   const merged = { ...a, quantitativeNeume: rule.result,
     timeNeume: b.timeNeume || null, gorgonNeume: b.gorgonNeume || null };
@@ -1422,16 +1454,7 @@ function combinePair(idx) {
   if (!c) return false;
   pushHistory();
   const b = score.elements[idx + 1];
-  if (ownSyllable(b)) {
-    // Push the words on by one note, up to the first note without any
-    let carry = b.lyric;
-    const end = lyricShiftEnd(idx + 2);
-    for (let j = idx + 2; j <= end; j++) {
-      const el = score.elements[j];
-      if (el.type !== 'note') continue;
-      [el.lyric, carry] = [carry, el.lyric];
-    }
-  }
+  if (ownSyllable(b)) pushWordsOn(idx + 2, b.lyric);
   score.elements.splice(idx, 2, c.merged);
   if (selectedIdx > idx) selectedIdx--;
   if (cursorPos > idx + 1) cursorPos--;
@@ -1941,7 +1964,7 @@ function enterLyricMode(idx) {
 function startLyricsAt(idx, selectFirst = true) {
   lyricMode.start = idx;
   const input = lyricInput();
-  input.value = buildLyricText(lyricNotes(idx).map(i => score.elements[i].lyric));
+  input.value = buildLyricText([...lyricNotes(idx).map(i => score.elements[i].lyric), ...lyricTail()]);
   const first = selectFirst ? lyricSlots()[0] : null;
   if (first) input.setSelectionRange(first.start, first.end);
   else input.setSelectionRange(input.value.length, input.value.length);
@@ -1953,7 +1976,7 @@ function startLyricsAt(idx, selectFirst = true) {
 // put the caret after the combined note's syllable
 function restartLyricsAfterCombine(idx) {
   const input = lyricInput();
-  input.value = buildLyricText(lyricNotes(lyricMode.start).map(i => score.elements[i].lyric));
+  input.value = buildLyricText([...lyricNotes(lyricMode.start).map(i => score.elements[i].lyric), ...lyricTail()]);
   const k = lyricNotes(lyricMode.start).indexOf(idx);
   const slot = k >= 0 ? lyricSlots()[k] : null;
   const at = slot ? slot.end : input.value.length;
@@ -1978,9 +2001,12 @@ function lyricSlots() {
 function applyLyrics() {
   if (!lyricMode.edited) { pushHistory(); lyricMode.edited = true; }
   const slots = lyricSlots();
-  lyricNotes(lyricMode.start).forEach((i, k) => {
+  const notes = lyricNotes(lyricMode.start).filter(i => score.elements[i] !== placeholderEl);
+  notes.forEach((i, k) => {
     score.elements[i].lyric = slots[k]?.text || '';
   });
+  // Words past the last note are kept, waiting for their notes
+  score.lyricTail = slots.slice(notes.length).map(s => s.text);
   showLyricCaret(slots, true);
 }
 
@@ -1992,10 +2018,10 @@ function showLyricCaret(slots = lyricSlots(), force = false) {
   const target = notes[Math.min(k, notes.length - 1)];
   const status = document.getElementById('lyric-status');
   const over = slots.length - notes.length;
-  if (over > 0) status.textContent = `${over} left over`;
+  if (over > 0) status.textContent = `${over} without notes`;
   else if (k >= notes.length) status.textContent = 'No more notes';
   else status.textContent = `Note ${k + 1} / ${notes.length}`;
-  status.title = over > 0 ? `${over} syllable${over > 1 ? 's' : ''} past the last note (not kept)` : '';
+  status.title = over > 0 ? `${over} syllable${over > 1 ? 's' : ''} past the last note, kept until notes are written for them` : '';
   status.classList.toggle('warn', over > 0 || k >= notes.length);
   if (!force && target === selectedIdx) return;
   selectedIdx = target;

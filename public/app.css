@@ -1048,13 +1048,18 @@ body.keyboard-open #compose { display: none; }
   min-height: 130px;
 }
 
-/* A blank spot's pending symbol: shown dimmed until it is changed or
-   committed, and never printed */
+/* A blank spot's pending symbol: shown in the accent orange until it is
+   changed or committed, and never printed */
 .note-col.placeholder .neume,
-.note-col.placeholder .martyria { opacity: 0.4; }
+.note-col.placeholder .martyria { color: var(--accent); }
+
+/* Words past the last note, waiting for their symbols */
+.note-col.lyric-only { cursor: default; }
+.note-col.lyric-only .lyric { color: var(--score-muted); font-style: italic; }
 
 @media print {
-  .note-col.placeholder { display: none; }
+  .note-col.placeholder,
+  .note-col.lyric-only { display: none; }
 }
 
 /* Corner toggles: Quant. (time signs) top-left, Qual. top-right, Mart. bottom-left;
