@@ -41,6 +41,11 @@ app.all('/api/admin/*', (req, res) => {
   res.status(503).json({ error: 'Sign-in is not set up', configured: false });
 });
 app.get('/admin', (req, res) => res.redirect('/'));
+// Shared links read from the account's database, so here they find nothing
+app.get('/api/shared/*', (req, res) => {
+  res.status(404).json({ error: 'This link is not shared, or no longer is.' });
+});
+app.get('/s/*', (req, res) => res.status(404).sendFile(join(__dirname, 'public/index.html')));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[${new Date().toISOString()}] Gorgon listening on 0.0.0.0:${PORT}`);

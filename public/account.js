@@ -217,6 +217,8 @@ export async function currentIsSaved() {
 
 function setState(s) {
   state = s;
+  const share = document.getElementById('btn-share');
+  if (share) share.hidden = s === 'off' || s === 'unknown';
   const btn = document.getElementById('btn-account');
   if (!btn) return;
   btn.hidden = s === 'off' || s === 'unknown';
@@ -267,6 +269,93 @@ function openSheet() {
 }
 function closeSheet() { document.getElementById('account-sheet').hidden = true; }
 
+// ---------------------------------------------------------------------------
+// Share: a read-only link to the open score (/s/<token>, lib/documents.js)
+// ---------------------------------------------------------------------------
+//
+// The link reads the account's copy, so sharing needs sign-in and the score
+// saved first. It follows later changes. Stop sharing deletes the link.
+
+let shareToken = null;
+const shareUrl = (t) => `${location.origin}/s/${t}`;
+
+function renderShare(msg) {
+  const sheet = document.getElementById('share-sheet');
+  if (!sheet || sheet.hidden) return;
+  const body = sheet.querySelector('.sheet-body');
+  if (msg || !shareToken) {
+    body.innerHTML = `<p class="share-note">${esc(msg || 'Making a link…')}</p>`;
+    return;
+  }
+  const url = shareUrl(shareToken);
+  const title = String(hooks.getScore().metadata?.title || '').trim();
+  body.innerHTML = `
+    <div class="sheet-label">Read-only link${title ? ` to “${esc(title)}”` : ''}</div>
+    <div class="share-link">
+      <input type="text" id="share-url" readonly value="${esc(url)}" aria-label="Link">
+      <button type="button" class="header-btn accent" data-copy>Copy</button>
+    </div>
+    <p class="share-note">Anyone with the link can read and chant from it on their phone, and make their own copy to edit. They can't change yours. It always shows your latest version.</p>
+    <div class="sheet-actions share-actions">
+      <button type="button" class="header-btn" data-unshare>Stop sharing</button>
+      ${navigator.share ? '<button type="button" class="header-btn" data-native>Send…</button>' : ''}
+      <a class="header-btn" href="${esc(url)}" target="_blank" rel="noopener">Open</a>
+    </div>`;
+}
+
+async function openShare() {
+  const sheet = document.getElementById('share-sheet');
+  shareToken = null;
+  sheet.hidden = false;
+  renderShare();
+  const score = hooks.getScore();
+  if (isBlank(score)) return renderShare('Write some music first, then share it.');
+  if (!(await syncNow())) return renderShare('Could not save this score to your account just now. Try again when you are online.');
+  const path = '/' + encodeURIComponent(currentId(hooks.getScore())) + '/share';
+  let res = await api(path);
+  if (res && res.status === 404) res = await api(path, { method: 'POST' });
+  const got = res && res.ok ? await res.json().catch(() => null) : null;
+  if (!got || !got.token) return renderShare('Could not make a link just now. Try again in a moment.');
+  shareToken = got.token;
+  renderShare();
+}
+
+function closeShare() { document.getElementById('share-sheet').hidden = true; }
+
+function initShare() {
+  const btn = document.getElementById('btn-share');
+  const sheet = document.getElementById('share-sheet');
+  if (!btn || !sheet) return;
+  btn.addEventListener('click', () => {
+    if (state === 'signed-in') return openShare();
+    // The link lives on the account: sign in, then come back to share
+    if (!confirm('Sharing a link keeps the score on your account, so anyone with the link sees your latest version. Sign in to share?')) return;
+    hooks.saveLocal();
+    location.href = '/admin?back=' + encodeURIComponent('/?share=1');
+  });
+  sheet.addEventListener('click', async (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return closeShare();
+    if (!shareToken) return;
+    const url = shareUrl(shareToken);
+    if (e.target.closest('[data-copy]')) {
+      try { await navigator.clipboard.writeText(url); hooks.toast('Link copied.'); }
+      catch { const f = document.getElementById('share-url'); f.focus(); f.select(); }
+    } else if (e.target.closest('[data-native]')) {
+      const title = String(hooks.getScore().metadata?.title || '').trim();
+      navigator.share({ title: title || 'Gorgon', url }).catch(() => {});
+    } else if (e.target.closest('[data-unshare]')) {
+      const res = await api('/' + encodeURIComponent(currentId(hooks.getScore())) + '/share', { method: 'DELETE' });
+      if (!res || !res.ok) { hooks.toast('Could not stop sharing just now.'); return; }
+      shareToken = null;
+      closeShare();
+      hooks.toast('Stopped sharing. The link no longer works.');
+    }
+  });
+  sheet.addEventListener('focusin', (e) => { if (e.target.id === 'share-url') e.target.select(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) closeShare(); });
+}
+
+/** Resolves once the account has answered who is signed in. */
 export function initAccount(h) {
   hooks = h;
   const btn = document.getElementById('btn-account');
@@ -292,11 +381,21 @@ export function initAccount(h) {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
 
+  initShare();
   currentId(hooks.getScore());
-  refresh();
+  const ready = refresh().then(() => {
+    // Back from signing in to share
+    const q = new URLSearchParams(location.search);
+    if (q.has('share')) {
+      q.delete('share');
+      history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+      if (state === 'signed-in') openShare();
+    }
+  }).catch(() => {});
   setInterval(() => { syncNow(); }, 5000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') refresh();
     else syncNow();
   });
+  return ready;
 }
