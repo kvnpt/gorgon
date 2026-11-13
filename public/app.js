@@ -145,6 +145,12 @@ function renderScoreHead() {
     title.value = want;
     fitTitle();
   }
+  const sub = document.getElementById('score-subtitle');
+  const wantSub = score.metadata?.subtitle || '';
+  if (document.activeElement !== sub && sub.value !== wantSub) {
+    sub.value = wantSub;
+  }
+  fitSubtitle();
   const btn = document.getElementById('score-mode');
   const text = modeLabels[currentMode()] || modeLabels[1];
   if (btn.dataset.text !== text) {
@@ -158,6 +164,13 @@ function fitTitle() {
   const t = document.getElementById('score-title');
   t.style.height = 'auto';
   t.style.height = `${t.scrollHeight}px`;
+}
+
+// The subtitle field is as wide as its text (or its placeholder)
+function fitSubtitle() {
+  const sub = document.getElementById('score-subtitle');
+  sub.parentElement.dataset.value = sub.value || sub.placeholder;
+  sub.parentElement.classList.toggle('empty', !sub.value);
 }
 
 let modeMenu = null;
@@ -939,6 +952,20 @@ function initToolbar() {
   title.addEventListener('blur', () => {
     title.value = title.value.trim();
     score.metadata.title = title.value;
+  });
+
+  const sub = document.getElementById('score-subtitle');
+  sub.addEventListener('input', () => {
+    score.metadata.subtitle = sub.value;
+    fitSubtitle();
+  });
+  sub.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); sub.blur(); }
+  });
+  sub.addEventListener('blur', () => {
+    sub.value = sub.value.trim();
+    score.metadata.subtitle = sub.value;
+    fitSubtitle();
   });
 
   const modeBtn = document.getElementById('score-mode');
