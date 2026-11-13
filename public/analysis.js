@@ -354,6 +354,15 @@ export function analyzeScore(elements, modeKey, theory) {
         break;
       }
 
+      // ----- REST (leimma): an empty beat of its own -----
+      case 'rest': {
+        entry.currentScale = currentScale;
+        entry.noteValue = currentNoteValue;
+        entry.noteName = noteValueToName(currentNoteValue, valueToNameMap);
+        beat += (['leimma1', 'leimma2', 'leimma3', 'leimma4'].indexOf(element.glyph) + 1) || 1;
+        break;
+      }
+
       // ----- SPACER / OTHER -----
       default: {
         // Spacers and unknown types: carry forward current state
