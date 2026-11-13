@@ -8,6 +8,7 @@ import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
+import { isStandalone, makePdf, deliverPdf } from './pdf.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -955,7 +956,12 @@ function initToolbar() {
     newScore();
   });
 
-  document.getElementById('btn-export').addEventListener('click', () => window.print());
+  // Safari prints to PDF itself; a Home Screen web app on iOS ignores
+  // window.print(), so there the PDF is made here and shared (pdf.js).
+  document.getElementById('btn-export').addEventListener('click', () => {
+    if (isStandalone()) exportPdf();
+    else window.print();
+  });
 
   document.getElementById('btn-lyric').addEventListener('click', () => enterLyricMode());
 
@@ -2059,12 +2065,50 @@ function newScore() {
 }
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, action = null, ms = 5000) {
   const el = document.getElementById('toast');
   el.textContent = msg;
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { el.hidden = true; action.run(); });
+    el.append(' ', btn);
+  }
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+  if (ms) toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+let pdfBusy = false;
+async function exportPdf() {
+  if (pdfBusy) return;
+  pdfBusy = true;
+  toast('Making the PDF…', null, 0);
+  let file;
+  try {
+    file = await makePdf(document.getElementById('score'), score.metadata.title);
+  } catch (e) {
+    console.error(e);
+    toast('Could not make the PDF.');
+    pdfBusy = false;
+    return;
+  }
+  pdfBusy = false;
+  document.getElementById('toast').hidden = true;
+  const share = async () => {
+    try {
+      await deliverPdf(file);
+    } catch (e) {
+      if (e.name === 'AbortError') return;           // closed the share sheet
+      // Making the pages took too long for iOS to count it as the tap that
+      // asked for it: a fresh tap opens the share sheet.
+      if (e.name === 'NotAllowedError') toast('The PDF is ready.', { label: 'Share', run: share }, 15000);
+      else { console.error(e); toast('Could not share the PDF.'); }
+    }
+  };
+  share();
 }
 
 function saveToLocal() {

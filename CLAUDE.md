@@ -22,6 +22,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 | `public/account.js` | Sign-in (Cloudflare Access) and saving scores to the account; Scores sheet |
 | `lib/access.js`, `lib/documents.js` | Worker: Access JWT check, `/admin` (sign-in), `/api/admin/documents` on D1 |
 | `public/lyrics.js` | Lyric mode: syllabify (Greek rules, English Hypher), text ↔ per-note lyrics |
+| `public/pdf.js` | PDF without the print dialog, for Home Screen web apps (iOS ignores `window.print()` there): print layout at A4 in a hidden frame, pages cut between lines, drawn via SVG `foreignObject` to JPEG, written to a PDF and shared. Elsewhere the PDF button still prints |
 | `public/gestures.js` | Compose-pad gesture recogniser (tap, vertical detent steps, horizontal swipe, long press) |
 | `public/app.css` | Styles (dark UI, paper-like score, print CSS) |
 | `public/index.html` | App shell |
