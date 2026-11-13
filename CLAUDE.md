@@ -20,7 +20,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 | `wrangler.jsonc` | Worker config |
 | `public/app.js` | Editor logic: data model, palette, renderer, compose pad, events |
 | `public/account.js` | Sign-in (Cloudflare Access) and saving scores to the account; Scores sheet |
-| `lib/access.js`, `lib/documents.js` | Worker: Access JWT check, `/admin` (sign-in), `/api/admin/documents` on D1 |
+| `lib/access.js`, `lib/documents.js` | Worker: Access JWT check, `/admin` (sign-in), `/api/admin/documents` on D1, share links (`/api/admin/documents/:id/share`, public `/api/shared/:token`) |
 | `public/lyrics.js` | Lyric mode: syllabify (Greek rules, English Hypher), text ↔ per-note lyrics |
 | `public/gestures.js` | Compose-pad gesture recogniser (tap, vertical detent steps, horizontal swipe, long press) |
 | `public/app.css` | Styles (dark UI, paper-like score, print CSS) |
@@ -44,6 +44,7 @@ Byzantine chant notation writer. Live at `gorgon.orthodoxy.au`.
 - Lyric mode (`public/lyrics.js`; Lyric button, Enter, or tapping a note's syllable): one text field, kept outside the re-rendered score so the phone keyboard stays up, holds the words from a start note on; every change re-lays them one syllable per note. Space = next word/note, `-` hand break (a word with any `-` is split only there; big hyphen button), `_` holds a syllable over one more note (Hold button; shown as `-` inside a word, extender line after one), `~` joins words on one note. Auto-split: Greek by grammar rules (diphthongs, word-initial clusters), English via Hypher + TeX en-US patterns (`public/vendor/`) with a vowel-group fallback and a church-word exception list. A note's lyric stays a string (`Ky-`, `-`, `_`); `buildLyricText` rebuilds the text from them
 - Auto-save to localStorage every 5s (`gorgon-score-v2`). Each score has `metadata.id`
 - Accounts (optional): Gorgon shares agora's Cloudflare Access application (team `agora-admin.cloudflareaccess.com`), which already covers `/admin` and `/api/admin/*` on every *.orthodoxy.au host, so one login works across the domain's tools. Sign in is `/admin?back=<path>`, and the account API lives under `/api/admin/` for that reason. `ACCESS_AUD` (that app's audience tag) is in `wrangler.jsonc` vars; empty = sign-in hidden. Signed in, the open score is also PUT to D1 (`gorgon` database, one row per email + doc id) every 5s when changed. Signing in never replaces anything: the visitor's score joins the account as its own document. A write based on an older version gets 409 and the browser keeps its version as a separate copy
+- Share links (Share button, signed in only): `/s/<token>` opens the same app shell read only (`viewOnly` in `app.js`, `body.view-mode`): no pad, no insert points, nothing written to `gorgon-score-v2`; A−/A+ text size (`zoom` on `#score-body`, remembered in `gorgon-view-zoom`); keeps the screen awake. The link reads the account's copy live (D1 `shares` table: token → email + doc id), so later fixes reach readers; Stop sharing or deleting the score kills it. The Worker puts the score's title into `<title>`/`og:title` for link previews. "Edit a copy" goes to `/?copy=<token>`: the editor opens the shared score under a new id (asking first if an unsaved score would be replaced). `index.html` uses absolute `/app.css` `/app.js` so it works under `/s/`
 
 ## License
 

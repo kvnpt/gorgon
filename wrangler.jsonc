@@ -7,7 +7,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/health", "/admin"]
+    "run_worker_first": ["/api/*", "/health", "/admin", "/s/*"]
   },
   "workers_dev": true,
   // Saved documents for signed-in people (lib/documents.js). No database_id:

@@ -1242,3 +1242,83 @@ body.lyric-mode #palette { display: none; }
 @media (pointer: coarse) {
   .combine-mark { left: calc(100% + 7px); }
 }
+
+/*
+ * Share sheet (account.js) and the read-only page a shared link opens
+ * (body.view-mode, app.js): the score alone, scrolling, at a size of the
+ * reader's choosing, with the way into the editor at the top and the end.
+ */
+#header h1 a { color: inherit; text-decoration: none; }
+.header-btn.accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.header-btn.accent:active { background: var(--accent2); border-color: var(--accent2); color: var(--on-accent); }
+.header-btn:disabled { opacity: 0.4; cursor: default; }
+
+.share-link { display: flex; gap: 0.5rem; margin-top: 0.35rem; }
+.share-link input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text);
+  font: 15px/1.2 var(--sans);
+  -webkit-user-select: text;
+  user-select: text;
+}
+@media (pointer: coarse) { .share-link input { font-size: 16px; } }
+.share-note { margin-top: 0.8rem; color: var(--text2); font-size: 0.9rem; line-height: 1.4; }
+.share-actions { gap: 0.5rem; flex-wrap: wrap; }
+
+.view-only { display: none !important; }
+body.view-mode .view-only { display: flex !important; }
+body.view-mode .edit-only,
+body.view-mode #compose,
+body.view-mode #palette,
+body.view-mode #lyric-bar { display: none !important; }
+
+body.view-mode #score-body { zoom: var(--view-zoom, 1); }
+body.view-mode .score { min-height: 0; }
+body.view-mode .note-col { cursor: default; }
+body.view-mode .note-col:hover { background: none; }
+body.view-mode .score-title,
+body.view-mode .score-subtitle { pointer-events: none; }
+body.view-mode .score-subtitle-wrap.empty { display: none; }
+body.view-mode .score-mode-label { cursor: default; pointer-events: none; }
+body.view-mode .score-mode-label .chev { display: none; }
+/* Room to scroll the last line up to eye level, and the page bounces as a
+   page does rather than as the editor's pinned shell */
+body.view-mode #score-area { align-items: flex-start; padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)); overscroll-behavior: auto; }
+body.view-mode { overscroll-behavior: auto; }
+
+body.view-mode .size-btn[hidden] { display: none; }
+.size-btn { min-width: 40px; padding: 5px 10px; font-family: Georgia, serif; font-size: 15px; }
+.size-btn small { font-size: 11px; margin-left: 1px; }
+
+.view-cta {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hair);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  color: var(--text2);
+  font-size: 0.9rem;
+  padding-bottom: 0.5rem;
+}
+.view-cta b { color: var(--accent2); font-weight: 700; }
+body.view-missing .view-cta p { display: none; }
+.view-missing-note { text-align: center; color: var(--text2); line-height: 1.5; padding: 1rem 0; }
+
+@media (max-width: 380px) {
+  body.view-mode .header-right { gap: 0.35rem; }
+  body.view-mode body.view-mode .size-btn[hidden] { display: none; }
+.size-btn { min-width: 36px; padding: 5px 8px; }
+}
+
+@media print {
+  .view-cta { display: none !important; }
+  body.view-mode #score-body { zoom: 1; }
+}

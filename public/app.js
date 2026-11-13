@@ -52,6 +52,11 @@ function codepointToChar(cp) {
 // STATE
 // ============================================================================
 
+// A shared link (/s/<token>) opens the score read only: no pad, no saving
+// over this browser's own score (see VIEW MODE at the end)
+const SHARED_TOKEN = (location.pathname.match(/^\/s\/([A-Za-z0-9]+)\/?$/) || [])[1] || null;
+const viewOnly = location.pathname.startsWith('/s/');
+
 let score = createScore();
 let cursorPos = 0;
 let selectedIdx = -1;
@@ -625,10 +630,10 @@ function render() {
   let html = '<div class="score-content">';
 
   // Insert point at start
-  html += insertPointHtml(0);
+  if (!viewOnly) html += insertPointHtml(0);
 
   // Pairs of notes one neume can write, unless their mark was dismissed
-  const pairs = focusPairs();
+  const pairs = viewOnly ? [] : focusPairs();
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
 
   for (let i = 0; i < score.elements.length; i++) {
@@ -651,7 +656,7 @@ function render() {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
     }
 
-    html += insertPointHtml(i + 1);
+    if (!viewOnly) html += insertPointHtml(i + 1);
   }
 
   html += '</div>'; // .score-content
@@ -670,6 +675,7 @@ function render() {
   }
 
   scoreEl.innerHTML = html;
+  if (viewOnly) return;
   bindScoreEvents();
 
   // Update palette validity indicators
@@ -2088,6 +2094,7 @@ function toast(msg) {
 }
 
 function saveToLocal() {
+  if (viewOnly) return;   // a shared score never lands on this browser's own
   try {
     localStorage.setItem('gorgon-score-v2', JSON.stringify(storableScore()));
   } catch (e) { /* storage full */ }
@@ -2109,7 +2116,7 @@ function loadFromLocal() {
   } catch (e) { /* corrupt */ }
 }
 
-setInterval(saveToLocal, 5000);
+if (!viewOnly) setInterval(saveToLocal, 5000);
 
 // ============================================================================
 // INIT
@@ -2147,6 +2154,7 @@ function initViewport() {
 }
 
 async function init() {
+  if (viewOnly) return initView();
   initViewport();
   await loadData();
   loadFromLocal();
@@ -2161,7 +2169,113 @@ async function init() {
   enterBlank(score.elements.length);
   reanalyze();
   render();
-  initAccount({ getScore: storableScore, openScore, newScore, toast, saveLocal: saveToLocal });
+  const accountReady = initAccount({ getScore: storableScore, openScore, newScore, toast, saveLocal: saveToLocal });
+  const copyOf = new URLSearchParams(location.search).get('copy');
+  if (copyOf) accountReady.then(() => openCopyOf(copyOf));
+}
+
+// ============================================================================
+// VIEW MODE (a shared link, read only) and copying it into the editor
+// ============================================================================
+
+async function fetchShared(token) {
+  const res = await fetch('/api/shared/' + encodeURIComponent(token), { cache: 'no-store' }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const got = await res.json().catch(() => null);
+  return got && got.score && Array.isArray(got.score.elements) ? got : null;
+}
+
+const VIEW_ZOOMS = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
+const VIEW_ZOOM_KEY = 'gorgon-view-zoom';
+
+async function initView() {
+  document.body.classList.add('view-mode');
+  const title = document.getElementById('score-title');
+  title.readOnly = true;
+  title.tabIndex = -1;
+  const sub = document.getElementById('score-subtitle');
+  sub.readOnly = true;
+  sub.tabIndex = -1;
+  document.getElementById('score-mode').disabled = true;
+  const body = document.getElementById('score-body');
+
+  for (const a of document.querySelectorAll('#btn-copy, #btn-copy-foot')) {
+    a.href = SHARED_TOKEN ? '/?copy=' + SHARED_TOKEN : '/';
+  }
+
+  // Text size, kept for the next shared score this browser opens
+  let zi = VIEW_ZOOMS.indexOf(1);
+  try {
+    const saved = parseFloat(localStorage.getItem(VIEW_ZOOM_KEY));
+    if (VIEW_ZOOMS.includes(saved)) zi = VIEW_ZOOMS.indexOf(saved);
+  } catch (e) { /* storage refused */ }
+  const applyZoom = () => {
+    document.documentElement.style.setProperty('--view-zoom', VIEW_ZOOMS[zi]);
+    document.getElementById('btn-smaller').disabled = zi === 0;
+    document.getElementById('btn-larger').disabled = zi === VIEW_ZOOMS.length - 1;
+    try { localStorage.setItem(VIEW_ZOOM_KEY, String(VIEW_ZOOMS[zi])); } catch (e) { /* storage refused */ }
+  };
+  document.getElementById('btn-smaller').addEventListener('click', () => { zi = Math.max(0, zi - 1); applyZoom(); });
+  document.getElementById('btn-larger').addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); applyZoom(); });
+  applyZoom();
+
+  const [got] = await Promise.all([SHARED_TOKEN ? fetchShared(SHARED_TOKEN) : null, loadData()]);
+  if (!got) {
+    document.body.classList.add('view-missing');
+    title.value = 'Link not found';
+    fitTitle();
+    document.getElementById('score-mode').hidden = true;
+    for (const a of document.querySelectorAll('#btn-copy, #btn-copy-foot')) { a.href = '/'; a.textContent = 'Open Gorgon'; }
+    for (const b of document.querySelectorAll('.size-btn')) b.hidden = true;
+    body.innerHTML = '<p class="view-missing-note">This score isn\'t shared any more, or the link is mistyped. Ask whoever sent it for a new link.</p>';
+    document.title = 'Gorgon — Byzantine chant';
+    return;
+  }
+  score = got.score;
+  score.metadata = score.metadata || {};
+  selectedIdx = -1;
+  cursorPos = -1;
+  reanalyze();
+  render();
+  fitTitle();
+  if (document.fonts?.ready) document.fonts.ready.then(() => { inkCache.clear(); render(); });
+  keepAwake();
+}
+
+// The phone stays awake while someone chants from the page
+let wakeLock = null;
+function keepAwake() {
+  if (!navigator.wakeLock) return;
+  const ask = () => {
+    if (wakeLock || document.visibilityState !== 'visible') return;
+    navigator.wakeLock.request('screen').then((l) => {
+      wakeLock = l;
+      l.addEventListener('release', () => { wakeLock = null; });
+    }).catch(() => { /* not allowed until the page is touched */ });
+  };
+  ask();
+  document.addEventListener('visibilitychange', ask);
+  document.addEventListener('pointerdown', ask, { passive: true });
+}
+
+// /?copy=<token>: "Edit a copy" from a shared page. The copy is the reader's
+// own score from here on, with an id of its own.
+async function openCopyOf(token) {
+  const clean = () => window.history.replaceState(null, '', '/');   // (`history` here is undo)
+  const got = await fetchShared(token);
+  if (!got) { clean(); toast('That score isn\'t shared any more, so there is nothing to copy.'); return; }
+  const mine = storableScore();
+  if (mine.elements.length > 0 && !(await currentIsSaved())) {
+    const t = String(mine.metadata?.title || '').trim();
+    const ok = confirm(`Open your copy? The score open here${t ? ` ("${t}")` : ''} is only in this browser, so it will be replaced. Sign in first to keep both.`);
+    if (!ok) { clean(); return; }
+  }
+  const copy = got.score;
+  const now = new Date().toISOString();
+  copy.metadata = { ...copy.metadata, id: newDocId(), created: now, modified: now };
+  openScore(copy);
+  clean();
+  toast('This copy is yours to change. The original stays as it was.');
 }
 
 init();
