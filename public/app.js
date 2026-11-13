@@ -1031,13 +1031,13 @@ const MIN_VALUE = -12;
 const MAX_VALUE = 14;
 
 // What a vertical swipe edits, chosen with the pad's corner toggles:
-//   'quantity' (top-left, the default): the note's interval
-//   'time'     (top-left tapped again): the note's time sign (klasma, gorgon...)
+//   'quantity' (the default, no toggle on): the note's interval
+//   'time'     (top-left, labelled Quant.): the note's time sign (klasma, gorgon...)
 //   'quality'  (top-right): the note's quality sign (vareia, psifiston...)
 //   'martyria' (bottom-left): blank spots hold martyriae; switches itself
 //              off once one is committed
 let padMode = 'quantity';
-const PAD_MODE_BUTTONS = { quantity: 'pad-quant', time: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
+const PAD_MODE_BUTTONS = { time: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
 
 // Quality signs in the order a swipe up offers them (none first)
 const QUALITY_SIGNS = ['psifiston', 'vareia', 'omalon', 'antikenoma', 'heteron', 'endofonon'];
@@ -1563,12 +1563,6 @@ function setPadMode(mode) {
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-pressed', String(on));
   }
-  // The top-left toggle is Quant. or, tapped again, Time
-  const quant = document.getElementById('pad-quant');
-  quant.textContent = mode === 'time' ? 'Time' : 'Quant.';
-  quant.title = mode === 'time'
-    ? 'Time: swipe up lengthens the note (klasma, dipli…), down shortens it (gorgon…). Tap for Quant.'
-    : 'Quantity: swipes change the note\'s interval. Tap again for time signs';
   // A pending symbol switches with the mode (Ison <-> martyria)
   const p = placeholderIndex();
   if (p >= 0 && wasMartyria !== (mode === 'martyria')) {
@@ -1588,10 +1582,9 @@ function initComposePad() {
   const pad = document.getElementById('pad');
 
   // Corner toggles; they must not start a pad gesture. Tapping the mode
-  // that is on turns it off again (back to quantity); tapping Quant. while
-  // it is on switches it to Time, and back.
+  // that is on turns it off again (back to intervals, the default).
   const nextMode = {
-    'pad-quant': () => (padMode === 'quantity' ? 'time' : 'quantity'),
+    'pad-quant': () => (padMode === 'time' ? 'quantity' : 'time'),
     'pad-qual': () => (padMode === 'quality' ? 'quantity' : 'quality'),
     'pad-mode': () => (padMode === 'martyria' ? 'quantity' : 'martyria'),
   };
@@ -1755,7 +1748,7 @@ function renderPad() {
     const up = options[i + 1] ? `↑ ${noteNameOf(options[i + 1].value)}` : '';
     const down = i > 0 ? `↓ ${noteNameOf(options[i - 1].value)}` : '';
     hintEl.textContent = padMode === 'quality' || padMode === 'time'
-      ? `${padMode === 'time' ? 'Time' : 'Quality'} signs go on notes · Tap to commit`
+      ? `${padMode === 'time' ? 'Quant.' : 'Quality'} signs go on notes · Tap to commit`
       : [up, down, 'Tap to commit'].filter(Boolean).join(' · ');
   } else if (el && el.type === 'rest') {
     const i = restBeats(el) - 1;
