@@ -31,6 +31,8 @@
   --accent-mid: rgba(242, 106, 0, 0.30);
   --danger: #dc3545;
   --warn: #c98a00;
+  --qual: #7a3ee0;                /* purple: Qual. (quality signs) preview */
+  --qual-soft: rgba(122, 62, 224, 0.12);
   --warn-soft: rgba(201, 138, 0, 0.12);
   --score-bg: #ffffff;
   --score-text: #0b0b0d;
@@ -69,6 +71,8 @@
     --accent-mid: rgba(255, 138, 61, 0.35);
     --danger: #f4677a;
     --warn: #e3b86a;
+    --qual: #b48cff;
+    --qual-soft: rgba(180, 140, 255, 0.16);
     --warn-soft: rgba(227, 184, 106, 0.14);
     --score-bg: #272a32;
     --score-text: #f4f4f6;
@@ -1327,3 +1331,37 @@ body.view-missing .view-cta p { display: none; }
   .view-cta { display: none !important; }
   body.view-mode #score-body { zoom: 1; }
 }
+
+/* Qual. (top-right toggle, or a long press on the pad): the note being given
+   a quality sign is previewed in purple, on the pad and in the score */
+.pad-mode-tr.active { background: var(--qual); border-color: var(--qual); color: #fff; }
+.pad.quality-mode { box-shadow: inset 0 0 0 2px var(--qual); }
+.pad.quality-mode .pad-glyph { color: var(--qual); }
+.note-col.qual-preview { outline-color: var(--qual); background: var(--qual-soft); }
+.note-col.qual-preview .neume { color: var(--qual); }
+
+/* Small arrows on the pad's sides: back (no label) and Next */
+.pad-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text2);
+  font: 600 12px/1 var(--sans);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.pad-arrow svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pad-arrow-l { left: 0.6rem; justify-content: center; padding: 0; }
+.pad-arrow-r { right: 0.6rem; padding-left: 0.65rem; }
+.pad-arrow:active { background: var(--surface2); }
+#palette:not([hidden]) ~ #compose .pad-arrow { min-height: 30px; }

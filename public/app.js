@@ -758,7 +758,9 @@ function noteColHtml(el, idx, analysis, pair) {
   const hasWarning = analysis?.warnings?.length > 0;
   const pending = el === placeholderEl ? ' placeholder' : '';
   const combine = pair ? ' combine-first' : '';
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}`;
+  // In Qual. the note being given a quality sign shows in purple
+  const qual = isSelected && padMode === 'quality' ? ' qual-preview' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}${qual}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -1088,8 +1090,13 @@ function initToolbar() {
 //               (or the first martyria option).
 //   Note:       swipe up/down steps its interval one rung.
 //   Martyria:   swipe up/down moves through the martyria options.
-//   Tap on a symbol, or swipe right, commits it and moves focus on (to the
-//   next symbol, or to an empty slot after the last one). Swipe left goes back.
+//   Swipe right / left changes the note's time: right lengthens it by a beat
+//   (klasma, apli, dipli…), left shortens it (gorgon, digorgon…). Where the
+//   note makes a combinable pair, the first swipe left combines it instead.
+//   On a rest it steps the beats; on a martyria or a blank spot it moves.
+//   Tap on a symbol (or the Next arrow) commits it and moves focus on (to
+//   the next symbol, or to an empty slot after the last one); the small
+//   left arrow goes back. A long press switches to Qual. for the next note.
 
 const MIN_VALUE = -12;
 const MAX_VALUE = 14;
@@ -1650,8 +1657,10 @@ function commitAndAdvance() {
       pushHistory();          // committing the pending symbol is an edit
       keepPlaceholder();
     }
-    // Martyria mode is for one martyria: committing it goes back to notes
+    // Martyria mode is for one martyria: committing it goes back to notes.
+    // Qual. is for one note too (a long press brings it back)
     if (padMode === 'martyria' && committed.type === 'martyria') setPadMode('quantity');
+    if (padMode === 'quality') setPadMode('quantity');
     if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
     else enterBlank(score.elements.length);
   }
@@ -1709,6 +1718,24 @@ function initComposePad() {
     haptic();
     refresh();
   });
+
+  // Small arrows on the pad's sides: back (unlabelled) and Next
+  const back = () => {
+    dropPlaceholder();
+    if (selectedIdx > 0) focusSymbol(selectedIdx - 1);
+    else if (selectedIdx < 0 && cursorPos > 0) focusSymbol(cursorPos - 1);
+    else { refresh(); return false; }
+    return true;
+  };
+  for (const [id, go] of [['pad-prev', back], ['pad-next', commitAndAdvance]]) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    btn.addEventListener('click', () => {
+      if (!go()) return;
+      haptic();
+      refresh();
+    });
+  }
 
   attachPad(pad, {
     onTap() {
@@ -1772,17 +1799,41 @@ function initComposePad() {
       refresh();
     },
 
-    onSwipe(dir) {
-      if (dir === 'right') {
-        if (!commitAndAdvance()) return;
-      } else {
-        dropPlaceholder();
-        if (selectedIdx > 0) focusSymbol(selectedIdx - 1);
-        else if (selectedIdx < 0 && cursorPos > 0) focusSymbol(cursorPos - 1);
-        else { refresh(); return; }
+    // Sideways: the note's time. Right lengthens, left shortens; a pair
+    // that can be combined is combined by the first swipe left.
+    onSwipe(side) {
+      const dir = side === 'right' ? 1 : -1;
+      const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+      const pair = dir < 0 && !lyricMode ? pairAtFocus() : null;
+      if (pair) {
+        if (!combinePair(pair.idx)) return;
+      } else if (el?.type === 'note') {
+        const step = timeStep(el, dir);
+        if (!step) return;
+        pushHistory();
+        if (el === placeholderEl) keepPlaceholder();
+        el.timeNeume = step.time;
+        el.gorgonNeume = step.gorgon;
+      } else if (el?.type === 'rest') {
+        const i = restBeats(el) - 1;
+        const next = Math.max(0, Math.min(LEIMMATA.length - 1, i + dir));
+        if (next === i) return;
+        pushHistory();
+        el.glyph = LEIMMATA[next];
+      } else if (!(dir > 0 ? commitAndAdvance() : back())) {
+        // A martyria or a blank spot has no time: the swipe moves instead
+        return;
       }
       haptic();
       refresh();
+    },
+
+    // A long press switches to Qual. (quality signs) for this note; the
+    // next commit switches back. A second long press leaves it at once.
+    onLongPress() {
+      setPadMode(padMode === 'quality' ? 'quantity' : 'quality');
+      haptic();
+      render();
     },
   });
 }
@@ -1832,12 +1883,15 @@ function renderPad() {
     const a = analysisResult[selectedIdx];
     pad.classList.remove('empty');
     glyphEl.innerHTML = noteGlyphHtml(el);
-    valueEl.textContent = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
+    const sign = el.gorgonNeume || el.timeNeume;
+    valueEl.textContent = (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0')
+      + (sign ? ` · ${TIME_NAMES[sign] || sign}` : '');
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
+    const side = pairAtFocus() ? '← combine · → longer' : '← shorter · → longer';
     hintEl.textContent = el === placeholderEl
-      ? 'New note · Swipe ↕ to change · Tap to keep Ison'
-      : 'Swipe ↕ to change · Tap to commit';
+      ? `New note · ↕ interval · ${side}`
+      : `↕ interval · ${side}`;
   } else if (el && el.type === 'martyria') {
     const a = analysisResult[selectedIdx];
     const chars = martyriaChars(a);
@@ -2244,9 +2298,178 @@ async function init() {
   enterBlank(score.elements.length);
   reanalyze();
   render();
-  const accountReady = initAccount({ getScore: storableScore, openScore, newScore, toast, saveLocal: saveToLocal });
+  const accountReady = initAccount({ getScore: storableScore, openScore, newScore, toast, saveLocal: saveToLocal, previewImage, previewKey });
   const copyOf = new URLSearchParams(location.search).get('copy');
   if (copyOf) accountReady.then(() => openCopyOf(copyOf));
+}
+
+// ============================================================================
+// LINK PREVIEW: the picture a chat app shows for a shared link (1200 × 630):
+// the title, the subtitle and mode, then the first notes with their words.
+// Drawn here, where the font and the analysis are at hand, and kept on the
+// account beside the share (account.js, lib/documents.js).
+// ============================================================================
+
+const PREVIEW_W = 1200;
+const PREVIEW_H = 630;
+
+async function previewImage() {
+  try { await document.fonts.load('96px Neanes'); } catch (e) { /* drawn with what loaded */ }
+  const c = document.createElement('canvas');
+  c.width = PREVIEW_W;
+  c.height = PREVIEW_H;
+  const ctx = c.getContext('2d');
+  const M = 72;                           // margin
+  const ink = '#0b0b0d';
+  const muted = '#6b6b70';
+  const red = '#cc0000';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
+
+  // Title, shrunk to one line
+  const title = String(score.metadata?.title || '').trim() || 'Untitled';
+  let size = 64;
+  ctx.fillStyle = ink;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  const titleFont = (px) => `700 ${px}px Georgia, 'Times New Roman', serif`;
+  ctx.font = titleFont(size);
+  while (size > 38 && ctx.measureText(title).width > PREVIEW_W - 2 * M) ctx.font = titleFont(--size);
+  ctx.fillText(fitText(ctx, title, PREVIEW_W - 2 * M), M, M + size * 0.8);
+  let y = M + size * 0.8;
+
+  // Subtitle · mode
+  const sub = [String(score.metadata?.subtitle || '').trim(), modeLabels[currentMode()] || '']
+    .filter(Boolean).join('  ·  ');
+  ctx.font = `30px Georgia, 'Times New Roman', serif`;
+  ctx.fillStyle = muted;
+  y += 52;
+  ctx.fillText(fitText(ctx, sub, PREVIEW_W - 2 * M), M, y);
+
+  // The notes, line by line, each with its syllable
+  const NEUME = 84;
+  const LYRIC = 32;
+  const LINE = 150;
+  const lyricFont = `${LYRIC}px Georgia, 'Times New Roman', serif`;
+  const neumeFont = `${NEUME}px Neanes`;
+  const footY = PREVIEW_H - 44;
+  let base = y + 30 + NEUME;     // neume baseline of the first line
+  let x = M;
+  const cols = [];
+  const els = score.elements;
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i];
+    if (el === placeholderEl) continue;
+    let col = null;
+    if (el.type === 'note') {
+      col = { run: neumeRun(el), lyric: el.lyric || '', supports: getSupportGlyphs(el) };
+    } else if (el.type === 'martyria') {
+      const chars = martyriaChars(analysisResult[i]);
+      if (chars) col = { run: chars.note + chars.root, lyric: '', color: red, lift: NEUME * 0.28 };
+    } else if (el.type === 'rest') {
+      col = { run: glyphChar(el.glyph), lyric: '' };
+    } else if (el.type === 'spacer') {
+      x += 28;
+    } else if (el.type === 'barline') {
+      col = { bar: true };
+    } else if (el.type === 'sectionBreak') {
+      cols.push({ newline: true });
+    }
+    if (col) cols.push(col);
+  }
+
+  for (const col of cols) {
+    if (col.newline) {
+      if (x === M) continue;
+      x = M;
+      base += LINE;
+      if (base + LYRIC + 30 > footY) break;
+      continue;
+    }
+    let w;
+    let inkLeft = 0;
+    let inkW = 0;
+    if (col.bar) {
+      w = 24;
+    } else {
+      ctx.font = neumeFont;
+      ctx.textAlign = 'left';
+      const m = ctx.measureText(col.run);
+      // The ink runs from x - left to x + right (left < 0: it starts after x)
+      inkLeft = m.actualBoundingBoxLeft;
+      inkW = Math.max(1, inkLeft + m.actualBoundingBoxRight);
+      ctx.font = lyricFont;
+      const lw = col.lyric && col.lyric !== '_' && col.lyric !== '-' ? ctx.measureText(col.lyric).width : 0;
+      w = Math.max(inkW, lw, NEUME * 0.3) + 22;
+    }
+    if (x + w > PREVIEW_W - M && x > M) {
+      x = M;
+      base += LINE;
+    }
+    if (base + LYRIC + 30 > footY) break;
+    const cx = x + w / 2;
+    if (col.bar) {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, base - NEUME * 0.75);
+      ctx.lineTo(cx, base + 6);
+      ctx.stroke();
+    } else {
+      ctx.font = neumeFont;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = col.color || ink;
+      ctx.fillText(col.run, cx - inkW / 2 + inkLeft, base - (col.lift || 0));
+      if (col.supports?.above) {
+        ctx.font = `${NEUME * 0.66}px Neanes`;
+        ctx.fillStyle = red;
+        ctx.textAlign = 'center';
+        ctx.fillText(col.supports.above, cx, base - NEUME * 0.7);
+      }
+      // Syllable, a held one's dash, or the extender line after a word
+      const ly = base + NEUME * 0.2 + LYRIC;
+      if (col.lyric === '_') {
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, ly);
+        ctx.lineTo(x + w, ly);
+        ctx.stroke();
+      } else if (col.lyric) {
+        ctx.font = lyricFont;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = col.lyric === '-' ? muted : ink;
+        ctx.fillText(col.lyric, cx, ly);
+      }
+    }
+    x += w;
+  }
+
+  // Where it was written
+  ctx.textAlign = 'left';
+  ctx.font = `600 24px -apple-system, 'Helvetica Neue', Arial, sans-serif`;
+  ctx.fillStyle = '#e05e00';
+  ctx.fillText('Gorgon', M, PREVIEW_H - 36);
+  const gw = ctx.measureText('Gorgon').width;
+  ctx.font = `24px -apple-system, 'Helvetica Neue', Arial, sans-serif`;
+  ctx.fillStyle = muted;
+  ctx.fillText('  ·  quick notation for the Byzi chanter', M + gw, PREVIEW_H - 36);
+
+  return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+}
+
+// Cut text to a width with an ellipsis
+function fitText(ctx, text, width) {
+  if (ctx.measureText(text).width <= width) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + '…').width > width) t = t.slice(0, -1);
+  return t.trimEnd() + '…';
+}
+
+// What the preview shows, to tell when it needs drawing again
+function previewKey() {
+  const s = storableScore();
+  return JSON.stringify([s.metadata?.title, s.metadata?.subtitle, currentMode(), s.elements.slice(0, 40)]);
 }
 
 // ============================================================================

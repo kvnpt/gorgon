@@ -10,7 +10,7 @@ import modeKeys from './data/theory/mode-keys.json';
 import neumeCombinations from './data/theory/neume-combinations.json';
 import martyriaRules from './data/theory/martyria-rules.json';
 import attractions from './data/theory/attractions.json';
-import { handleAccount, handleLogin, handleShared, readShared } from './lib/documents.js';
+import { handleAccount, handleLogin, handleShared, readShared, readPreview } from './lib/documents.js';
 
 const API = {
   '/api/glyphs': glyphs,
@@ -42,6 +42,7 @@ export default {
 
     // Shared scores: public, read only (lib/documents.js)
     if (pathname.startsWith('/api/shared/')) return handleShared(request, env, pathname);
+    if (/^\/s\/[^/]+\/preview\.png$/.test(pathname)) return sharedPreview(env, pathname);
     if (pathname.startsWith('/s/')) return sharedPage(request, env, pathname);
 
     if (pathname.startsWith('/api/')) {
@@ -62,32 +63,65 @@ export default {
   },
 };
 
+const MODE_LABELS = {
+  1: 'Mode 1', 2: 'Mode 2', 3: 'Mode 3', 4: 'Mode 4',
+  5: 'Plagal Mode 1', 6: 'Plagal Mode 2', 7: 'Grave Mode', 8: 'Plagal Mode 4',
+};
+const PREVIEW_TITLE = 'Gorgon — quick notation for the Byzi chanter';
+
 // /s/<token>: the app shell, which opens read only on a shared path
-// (app.js). The score's title goes into the page's title and link preview,
-// so a link pasted into a chat reads as the hymn rather than as the app.
+// (app.js). A link pasted into a chat shows the picture the author's browser
+// drew (title and the first notes with their words, /s/<token>/preview.png),
+// Gorgon's line as its title, and the hymn's title, subtitle and mode below.
 async function sharedPage(request, env, pathname) {
   const page = await env.ASSETS.fetch(new Request(new URL('/', request.url), request));
   const token = decodeURIComponent(pathname.slice(3).replace(/\/$/, ''));
   let got = null;
   try { got = await readShared(env, token); } catch { /* the page shows the error itself */ }
   const title = got?.title ? `${got.title} · Gorgon` : 'Gorgon — Byzantine chant';
-  const desc = 'Byzantine chant, to read and chant from. Make a copy to edit your own.';
+  const s = got?.score;
+  const mode = MODE_LABELS[s?.modeKey?.mode || s?.mode];
+  const about = [got?.title, String(s?.metadata?.subtitle || '').trim(), mode].filter(Boolean).join(' · ');
+  const desc = about || 'Byzantine chant, to read and chant from. Make a copy to edit your own.';
+  const origin = new URL(request.url).origin;
+  const image = got?.preview_at
+    ? `${origin}/s/${encodeURIComponent(token)}/preview.png?v=${got.preview_at}` : null;
   const meta = (attr, key, val) => `<meta ${attr}="${key}" content="${escAttr(val)}">`;
   const res = new HTMLRewriter()
     .on('title', { element(el) { el.setInnerContent(title); } })
     .on('head', {
       element(el) {
         el.append(meta('name', 'description', desc)
-          + meta('property', 'og:title', got?.title || 'Gorgon')
+          + meta('property', 'og:title', got ? PREVIEW_TITLE : 'Gorgon')
           + meta('property', 'og:description', desc)
           + meta('property', 'og:site_name', 'Gorgon')
-          + meta('property', 'og:type', 'article'), { html: true });
+          + meta('property', 'og:type', 'article')
+          + meta('property', 'og:url', `${origin}/s/${encodeURIComponent(token)}`)
+          + (image
+            ? meta('property', 'og:image', image)
+              + meta('property', 'og:image:type', 'image/png')
+              + meta('property', 'og:image:width', '1200')
+              + meta('property', 'og:image:height', '630')
+              + meta('property', 'og:image:alt', about || 'Byzantine chant')
+              + meta('name', 'twitter:card', 'summary_large_image')
+            : ''), { html: true });
       },
     })
     .transform(page);
   const headers = new Headers(res.headers);
   headers.set('cache-control', 'no-cache');
   return new Response(res.body, { status: got ? 200 : 404, headers });
+}
+
+// /s/<token>/preview.png: the link's picture, while the score is shared
+async function sharedPreview(env, pathname) {
+  const token = decodeURIComponent(pathname.split('/')[2] || '');
+  let got = null;
+  try { got = await readPreview(env, token); } catch { /* missing reads as not found */ }
+  if (!got) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain' } });
+  return new Response(got.png, {
+    headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=300' },
+  });
 }
 
 const escAttr = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

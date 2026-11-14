@@ -99,8 +99,9 @@ export function syncNow() {
 
     const out = await put(score, meta ? meta.base : null);
     if (out.ok) {
-      writeSync({ ...readSync(), [id]: { base: out.updated_at, sent: h } });
+      writeSync({ ...readSync(), [id]: { ...readSync()[id], base: out.updated_at, sent: h } });
       bumpDoc(id, score, out.updated_at);
+      if (out.shared) sendPreview(id);
       return true;
     }
     if (out.conflict) {
@@ -211,6 +212,28 @@ export async function currentIsSaved() {
   return syncNow();
 }
 
+/**
+ * A shared score's link preview (the picture chat apps show): drawn by the
+ * editor (hooks.previewImage) and sent when what it shows has changed.
+ */
+let previewBusy = false;
+async function sendPreview(id, force = false) {
+  if (previewBusy || !hooks.previewImage) return;
+  const key = hash(hooks.previewKey());
+  if (!force && readSync()[id]?.preview === key) return;
+  previewBusy = true;
+  try {
+    const png = await hooks.previewImage();
+    if (!png || currentId(hooks.getScore()) !== id) return;
+    const res = await api('/' + encodeURIComponent(id) + '/preview', {
+      method: 'PUT', headers: { 'content-type': 'image/png' }, body: png,
+    });
+    if (res && res.ok) writeSync({ ...readSync(), [id]: { ...readSync()[id], preview: key } });
+  } catch { /* tried again with the next change */ } finally {
+    previewBusy = false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // UI: a header button (Sign in / Scores) and the account sheet
 // ---------------------------------------------------------------------------
@@ -318,6 +341,7 @@ async function openShare() {
   if (!got || !got.token) return renderShare('Could not make a link just now. Try again in a moment.');
   shareToken = got.token;
   renderShare();
+  sendPreview(currentId(hooks.getScore()));
 }
 
 function closeShare() { document.getElementById('share-sheet').hidden = true; }
