@@ -67,34 +67,36 @@ const MODE_LABELS = {
   1: 'Mode 1', 2: 'Mode 2', 3: 'Mode 3', 4: 'Mode 4',
   5: 'Plagal Mode 1', 6: 'Plagal Mode 2', 7: 'Grave Mode', 8: 'Plagal Mode 4',
 };
-const PREVIEW_TITLE = 'Gorgon — quick notation for the Byzi chanter';
 
 // /s/<token>: the app shell, which opens read only on a shared path
 // (app.js). A link pasted into a chat shows the picture the author's browser
 // drew (title and the first notes with their words, /s/<token>/preview.png),
-// Gorgon's line as its title, and the hymn's title, subtitle and mode below.
+// the hymn's title, and its subtitle and mode below: nothing about Gorgon,
+// whose own line (index.html) is only for a link to the home page.
 async function sharedPage(request, env, pathname) {
   const page = await env.ASSETS.fetch(new Request(new URL('/', request.url), request));
   const token = decodeURIComponent(pathname.slice(3).replace(/\/$/, ''));
   let got = null;
   try { got = await readShared(env, token); } catch { /* the page shows the error itself */ }
-  const title = got?.title ? `${got.title} · Gorgon` : 'Gorgon — Byzantine chant';
+  const title = got ? (got.title || 'Untitled') : 'Gorgon — Byzantine chant';
   const s = got?.score;
   const mode = MODE_LABELS[s?.modeKey?.mode || s?.mode];
-  const about = [got?.title, String(s?.metadata?.subtitle || '').trim(), mode].filter(Boolean).join(' · ');
-  const desc = about || 'Byzantine chant, to read and chant from. Make a copy to edit your own.';
+  const hymn = got ? (got.title || 'Untitled') : 'Gorgon';
+  const about = [String(s?.metadata?.subtitle || '').trim(), mode].filter(Boolean).join(' · ');
+  const desc = about || 'Byzantine chant';
   const origin = new URL(request.url).origin;
   const image = got?.preview_at
     ? `${origin}/s/${encodeURIComponent(token)}/preview.png?v=${got.preview_at}` : null;
   const meta = (attr, key, val) => `<meta ${attr}="${key}" content="${escAttr(val)}">`;
   const res = new HTMLRewriter()
+    // The home page's own preview tags give way to the score's
+    .on('meta[property^="og:"], meta[name="description"]', { element(el) { el.remove(); } })
     .on('title', { element(el) { el.setInnerContent(title); } })
     .on('head', {
       element(el) {
         el.append(meta('name', 'description', desc)
-          + meta('property', 'og:title', got ? PREVIEW_TITLE : 'Gorgon')
+          + meta('property', 'og:title', hymn)
           + meta('property', 'og:description', desc)
-          + meta('property', 'og:site_name', 'Gorgon')
           + meta('property', 'og:type', 'article')
           + meta('property', 'og:url', `${origin}/s/${encodeURIComponent(token)}`)
           + (image
@@ -102,7 +104,7 @@ async function sharedPage(request, env, pathname) {
               + meta('property', 'og:image:type', 'image/png')
               + meta('property', 'og:image:width', '1200')
               + meta('property', 'og:image:height', '630')
-              + meta('property', 'og:image:alt', about || 'Byzantine chant')
+              + meta('property', 'og:image:alt', [hymn, about].filter(Boolean).join(' · '))
               + meta('name', 'twitter:card', 'summary_large_image')
             : ''), { html: true });
       },

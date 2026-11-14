@@ -1096,7 +1096,8 @@ function initToolbar() {
 //   On a rest it steps the beats; on a martyria or a blank spot it moves.
 //   Tap on a symbol (or the Next arrow) commits it and moves focus on (to
 //   the next symbol, or to an empty slot after the last one); the small
-//   left arrow goes back. A long press switches to Qual. for the next note.
+//   left arrow goes back. A long press switches to Qual. for the next note
+//   (the Qual. button keeps it on until it is tapped off).
 
 const MIN_VALUE = -12;
 const MAX_VALUE = 14;
@@ -1108,6 +1109,8 @@ const MAX_VALUE = 14;
 //   'martyria' (bottom-left): blank spots hold martyriae; switches itself
 //              off once one is committed
 let padMode = 'quantity';
+// Qual. from a long press is for one note; from its button it stays on
+let qualOnce = false;
 const PAD_MODE_BUTTONS = { time: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
 
 // Quality signs in the order a swipe up offers them (none first)
@@ -1658,17 +1661,18 @@ function commitAndAdvance() {
       keepPlaceholder();
     }
     // Martyria mode is for one martyria: committing it goes back to notes.
-    // Qual. is for one note too (a long press brings it back)
+    // Qual. from a long press is for one note too; from its button it stays
     if (padMode === 'martyria' && committed.type === 'martyria') setPadMode('quantity');
-    if (padMode === 'quality') setPadMode('quantity');
+    if (padMode === 'quality' && qualOnce) setPadMode('quantity');
     if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
     else enterBlank(score.elements.length);
   }
   return true;
 }
 
-function setPadMode(mode) {
+function setPadMode(mode, once = false) {
   const wasMartyria = padMode === 'martyria';
+  qualOnce = mode === 'quality' && once;
   padMode = mode;
   for (const id of new Set(Object.values(PAD_MODE_BUTTONS))) {
     const btn = document.getElementById(id);
@@ -1831,7 +1835,7 @@ function initComposePad() {
     // A long press switches to Qual. (quality signs) for this note; the
     // next commit switches back. A second long press leaves it at once.
     onLongPress() {
-      setPadMode(padMode === 'quality' ? 'quantity' : 'quality');
+      setPadMode(padMode === 'quality' ? 'quantity' : 'quality', true);
       haptic();
       render();
     },
@@ -2352,7 +2356,7 @@ async function previewImage() {
   const LINE = 150;
   const lyricFont = `${LYRIC}px Georgia, 'Times New Roman', serif`;
   const neumeFont = `${NEUME}px Neanes`;
-  const footY = PREVIEW_H - 44;
+  const footY = PREVIEW_H - 16;      // the music runs to the bottom
   let base = y + 30 + NEUME;     // neume baseline of the first line
   let x = M;
   const cols = [];
@@ -2444,16 +2448,6 @@ async function previewImage() {
     }
     x += w;
   }
-
-  // Where it was written
-  ctx.textAlign = 'left';
-  ctx.font = `600 24px -apple-system, 'Helvetica Neue', Arial, sans-serif`;
-  ctx.fillStyle = '#e05e00';
-  ctx.fillText('Gorgon', M, PREVIEW_H - 36);
-  const gw = ctx.measureText('Gorgon').width;
-  ctx.font = `24px -apple-system, 'Helvetica Neue', Arial, sans-serif`;
-  ctx.fillStyle = muted;
-  ctx.fillText('  ·  quick notation for the Byzi chanter', M + gw, PREVIEW_H - 36);
 
   return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
 }
