@@ -81,6 +81,11 @@
 
   <!-- Compose pad: the one-handed editing surface (thumb zone) -->
   <div id="compose">
+    <!-- Back (no label) and Next, above the pad -->
+    <div class="pad-nav">
+      <button type="button" id="pad-prev" class="pad-arrow" title="Back" aria-label="Previous"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
+      <button type="button" id="pad-next" class="pad-arrow" title="Commit and go to the next note">Next<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+    </div>
     <div id="pad" class="pad" aria-label="Compose pad: swipe up or down to set the note, right to lengthen it, left to shorten or combine; tap to commit; hold for quality signs">
       <div class="pad-glyph" id="pad-glyph"></div>
       <div class="pad-info">
@@ -88,11 +93,14 @@
         <span class="pad-note" id="pad-note"></span>
       </div>
       <div class="pad-hint" id="pad-hint"></div>
-      <button type="button" id="pad-quant" class="pad-mode pad-mode-tl" aria-pressed="false" title="Quant.: swipe up lengthens the note (klasma, apli, dipli…), down shortens it (gorgon…). Tap again for intervals">Quant.</button>
-      <button type="button" id="pad-qual" class="pad-mode pad-mode-tr" aria-pressed="false" title="Quality (or hold the pad): swipes change the note's quality: petasti, then the quality signs (psifiston, vareia, omalon…)">Qual.</button>
-      <button type="button" id="pad-mode" class="pad-mode pad-mode-bl" aria-pressed="false" title="Martyria: blank spots hold martyriae; swipes choose which">Mart.</button>
-      <button type="button" id="pad-prev" class="pad-arrow pad-arrow-l" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
-      <button type="button" id="pad-next" class="pad-arrow pad-arrow-r" title="Commit and go to the next note">Next<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+      <!-- What a swipe does here: informational, not buttons -->
+      <span class="pad-dir pad-dir-up" aria-hidden="true">↑ +1</span>
+      <span class="pad-dir pad-dir-down" aria-hidden="true">↓ −1</span>
+      <span class="pad-dir pad-dir-left" aria-hidden="true">←<br>−1</span>
+      <span class="pad-dir pad-dir-right" aria-hidden="true">→<br>+1</span>
+      <button type="button" id="pad-quant" class="pad-mode pad-mode-tl pad-quant" aria-pressed="false" aria-label="Quantity: time signs" title="Time signs: swipe up lengthens the note (klasma, apli, dipli…), down shortens it (gorgon…). Tap again for intervals"><span class="quant-icon" data-mark="gorgonAbove"></span><span class="quant-icon" data-mark="klasmaAbove"></span></button>
+      <button type="button" id="pad-qual" class="pad-mode pad-mode-tc" aria-pressed="false" title="Quality (or hold the pad): swipes change the note's quality: petasti, then the quality signs (psifiston, vareia, omalon…)">Qual.</button>
+      <button type="button" id="pad-mart" class="pad-mode pad-mode-tr pad-mart" title="Insert this martyria here; swipe up or down to change it"><span class="pad-mart-glyph"></span></button>
       <button type="button" id="pad-combine" class="pad-mode pad-mode-br pad-combine" hidden><span class="combine-glyph"></span>Combine</button>
     </div>
     <div class="action-row compose-actions">

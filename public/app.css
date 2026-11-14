@@ -1340,28 +1340,80 @@ body.view-missing .view-cta p { display: none; }
 .note-col.qual-preview { outline-color: var(--qual); background: var(--qual-soft); }
 .note-col.qual-preview .neume { color: var(--qual); }
 
-/* Small arrows on the pad's sides: back (no label) and Next */
+/* Back (no label) and Next, in a row above the pad */
+.pad-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .pad-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.15rem;
-  min-height: 36px;
-  min-width: 36px;
-  padding: 0 0.4rem;
+  min-height: 34px;
+  min-width: 44px;
+  padding: 0 0.6rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   color: var(--text2);
-  font: 600 12px/1 var(--sans);
+  font: 600 13px/1 var(--sans);
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 .pad-arrow svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.pad-arrow-l { left: 0.6rem; justify-content: center; padding: 0; }
-.pad-arrow-r { right: 0.6rem; padding-left: 0.65rem; }
+#pad-next { padding-left: 0.85rem; }
 .pad-arrow:active { background: var(--surface2); }
-#palette:not([hidden]) ~ #compose .pad-arrow { min-height: 30px; }
+
+/* What a swipe does, near each edge: information only */
+.pad-dir {
+  position: absolute;
+  font: 600 11px/1.15 var(--sans);
+  color: var(--text3);
+  text-align: center;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.pad-dir-up { top: 3.6rem; left: 50%; transform: translateX(-50%); }
+.pad-dir-down { bottom: 0.55rem; left: 50%; transform: translateX(-50%); }
+.pad-dir-left { left: 0.7rem; top: 50%; transform: translateY(-50%); }
+.pad-dir-right { right: 0.7rem; top: 50%; transform: translateY(-50%); }
+.pad.empty .pad-dir { display: none; }
+#palette:not([hidden]) ~ #compose .pad-dir-up { display: none; }
+
+/* Top row: Quant. (gorgon and klasma) left, Qual. middle, martyria right */
+.pad-mode-tc { top: 0.6rem; bottom: auto; left: 50%; transform: translateX(-50%); }
+.pad-quant { display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; }
+.quant-icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+.pad-mart { display: inline-flex; align-items: center; justify-content: center; }
+.pad-mart-glyph {
+  font-family: 'Neanes', sans-serif;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--neume-red);
+  /* the root sign hangs below the letter: lift the pair to the middle */
+  transform: translateY(-0.3em);
+}
+
+/* The note sits below the top row and the ↑ hint, clear of the ↓ hint */
+.pad { padding-top: 4.4rem; padding-bottom: 1.5rem; }
+#palette:not([hidden]) ~ #compose .pad { padding-top: 3.4rem; padding-bottom: 0.4rem; }
+#palette:not([hidden]) ~ #compose .pad-dir-down { display: none; }
+
+/* Where the hint names the next steps up and down, it takes the ↑ ↓ hints' place */
+.pad.hint-steps .pad-dir-up,
+.pad.hint-steps .pad-dir-down { display: none; }
+.pad-glyph.martyria { font-size: 3.2rem; min-height: 3.2rem; transform: translateY(-0.4em); }
+/* Small pad (Signs drawer open): only the note and its value under the top row */
+#palette:not([hidden]) ~ #compose .pad { gap: 0; }
+#palette:not([hidden]) ~ #compose .pad-glyph { font-size: 2.6rem; min-height: 2.6rem; }
+#palette:not([hidden]) ~ #compose .pad-dir { display: none; }

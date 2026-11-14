@@ -1111,7 +1111,7 @@ const MAX_VALUE = 14;
 let padMode = 'quantity';
 // Qual. from a long press is for one note; from its button it stays on
 let qualOnce = false;
-const PAD_MODE_BUTTONS = { time: 'pad-quant', quality: 'pad-qual', martyria: 'pad-mode' };
+const PAD_MODE_BUTTONS = { time: 'pad-quant', quality: 'pad-qual' };
 
 // Quality signs in the order a swipe up offers them (none first)
 const QUALITY_SIGNS = ['psifiston', 'vareia', 'omalon', 'antikenoma', 'heteron', 'endofonon'];
@@ -1703,7 +1703,6 @@ function initComposePad() {
   const nextMode = {
     'pad-quant': () => (padMode === 'time' ? 'quantity' : 'time'),
     'pad-qual': () => (padMode === 'quality' ? 'quantity' : 'quality'),
-    'pad-mode': () => (padMode === 'martyria' ? 'quantity' : 'martyria'),
   };
   for (const [id, next] of Object.entries(nextMode)) {
     const btn = document.getElementById(id);
@@ -1714,6 +1713,18 @@ function initComposePad() {
     });
   }
   setPadMode('quantity');
+  drawQuantIcons();
+
+  // The martyria button shows the martyria that would go here; a tap puts
+  // it in and keeps it in focus, so a swipe up or down changes it
+  const martBtn = document.getElementById('pad-mart');
+  martBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  martBtn.addEventListener('click', () => {
+    const opt = martyriaOptions(martyriaPos())[0];
+    if (!opt) return;
+    insertElement(martyriaFromOption(opt));
+    haptic();
+  });
 
   const combineBtn = document.getElementById('pad-combine');
   combineBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1842,7 +1853,72 @@ function initComposePad() {
   });
 }
 
+// Where the martyria button would put its martyria: in place of the pending
+// symbol, after the note in focus, or on the blank spot
+function martyriaPos() {
+  const p = placeholderIndex();
+  if (p >= 0 && selectedIdx === p) return p;
+  return selectedIdx >= 0 ? selectedIdx + 1 : cursorPos;
+}
+
+function renderPadMartyria() {
+  const btn = document.getElementById('pad-mart');
+  const pos = martyriaPos();
+  const opt = martyriaOptions(pos)[0];
+  const chars = opt ? optionChars(opt, pos) : '';
+  btn.querySelector('.pad-mart-glyph').textContent = chars;
+  const label = opt ? `Insert the martyria ${noteNameOf(opt.value)} here` : 'Insert a martyria';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+// The Quant. button's gorgon and klasma. Both are marks the font hangs on a
+// neume (a lone one draws as nothing in Safari), so each is drawn on an Ison
+// and the Ison erased again, leaving the sign as a mask in the text colour.
+function drawQuantIcons() {
+  const run = (name) => (glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '');
+  const draw = () => {
+    for (const span of document.querySelectorAll('.quant-icon')) {
+      const base = getNeumeChar({ quantitativeNeume: 'Ison' });
+      const mark = run(span.dataset.mark);
+      if (!mark || base === '?') continue;
+      const S = 96;
+      const c = document.createElement('canvas');
+      c.width = S * 3;
+      c.height = S * 3;
+      const ctx = c.getContext('2d');
+      ctx.font = `${S}px Neanes`;
+      ctx.fillText(base + mark, S, S * 2);
+      ctx.globalCompositeOperation = 'destination-out';
+      for (let k = 0; k < 4; k++) ctx.fillText(base, S, S * 2);
+      // Crop to the sign's ink
+      const { data } = ctx.getImageData(0, 0, c.width, c.height);
+      let x0 = c.width; let y0 = c.height; let x1 = -1; let y1 = -1;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          if (data[(y * c.width + x) * 4 + 3] > 40) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x;
+            if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+        }
+      }
+      if (x1 < 0) continue;
+      const out = document.createElement('canvas');
+      out.width = x1 - x0 + 3;
+      out.height = y1 - y0 + 3;
+      out.getContext('2d').drawImage(c, x0 - 1, y0 - 1, out.width, out.height, 0, 0, out.width, out.height);
+      span.style.setProperty('--icon', `url(${out.toDataURL()})`);
+    }
+  };
+  document.fonts?.load('96px Neanes').then(draw, draw);
+}
+
 function renderPad() {
+  renderPadInner();
+  markHintSteps();
+}
+
+function renderPadInner() {
   const glyphEl = document.getElementById('pad-glyph');
   const valueEl = document.getElementById('pad-value');
   const noteEl = document.getElementById('pad-note');
@@ -1854,6 +1930,7 @@ function renderPad() {
   pad.classList.toggle('time-mode', padMode === 'time');
   glyphEl.classList.remove('martyria');
   renderPadCombine();
+  renderPadMartyria();
 
   if (el && el.type === 'note' && padMode === 'quality') {
     const a = analysisResult[selectedIdx];
@@ -1892,10 +1969,11 @@ function renderPad() {
       + (sign ? ` · ${TIME_NAMES[sign] || sign}` : '');
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
-    const side = pairAtFocus() ? '← combine · → longer' : '← shorter · → longer';
+    // The arrows at the edges say what a swipe does; only combining needs words
+    const combine = pairAtFocus() ? 'Swipe ← to combine' : '';
     hintEl.textContent = el === placeholderEl
-      ? `New note · ↕ interval · ${side}`
-      : `↕ interval · ${side}`;
+      ? ['New note', combine].filter(Boolean).join(' · ')
+      : combine;
   } else if (el && el.type === 'martyria') {
     const a = analysisResult[selectedIdx];
     const chars = martyriaChars(a);
@@ -1941,6 +2019,11 @@ function renderPad() {
         : 'Swipe up or down to start with Ison';
     }
   }
+}
+
+function markHintSteps() {
+  const pad = document.getElementById('pad');
+  pad.classList.toggle('hint-steps', /[↑↓]/.test(document.getElementById('pad-hint').textContent));
 }
 
 // The pad's Combine pill (bottom-right): offered while the pair being
