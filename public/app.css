@@ -1388,7 +1388,7 @@ body.keyboard-open .pad-nav { display: none; }
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
-.pad-dir-up { top: 3.6rem; left: 50%; transform: translateX(-50%); }
+.pad-dir-up { top: 0.9rem; left: 50%; transform: translateX(-50%); }
 .pad-dir-down { bottom: 0.55rem; left: 50%; transform: translateX(-50%); }
 .pad-dir-left { left: 0.7rem; top: 50%; transform: translateY(-50%); }
 .pad-dir-right { right: 0.7rem; top: 50%; transform: translateY(-50%); }
@@ -1407,11 +1407,11 @@ body.keyboard-open .pad-nav { display: none; }
   min-height: 40px;
   padding: 0 0.75rem;
 }
-.pad-quant { gap: 0.12rem; padding: 0 0.65rem; color: var(--quant); border-color: color-mix(in srgb, var(--quant) 45%, transparent); }
+.pad-quant { padding: 0 0.55rem; color: var(--quant); border-color: color-mix(in srgb, var(--quant) 45%, transparent); }
 .pad-qual { color: var(--qual); border-color: color-mix(in srgb, var(--qual) 45%, transparent); }
 .pad-mart { color: var(--neume-red); min-width: 48px; }
 .pad-mode-tl.pad-quant.active { background: var(--quant); border-color: var(--quant); color: #fff; }
-.pad-mode-tc.pad-qual.active { background: var(--qual); border-color: var(--qual); color: #fff; }
+.pad-qual.active { background: var(--qual); border-color: var(--qual); color: #fff; }
 .quant-icon, .qual-glyph {
   display: inline-block;
   width: 14px;
@@ -1423,7 +1423,7 @@ body.keyboard-open .pad-nav { display: none; }
 .pad.time-mode { box-shadow: inset 0 0 0 2px var(--quant); }
 
 /* The note sits below the top row and the ↑ hint, clear of the ↓ hint */
-.pad { padding-top: 4.2rem; padding-bottom: 2rem; }
+.pad { padding-top: 3.4rem; padding-bottom: 2.4rem; }
 #palette:not([hidden]) ~ #compose .pad { padding-top: 3.4rem; padding-bottom: 0.4rem; }
 #palette:not([hidden]) ~ #compose .pad-dir-down { display: none; }
 
@@ -1647,3 +1647,8 @@ body.keyboard-open .pad-nav { display: none; }
 .scan-read:active { background: var(--accent); color: var(--on-accent); }
 .scan-reading { font: 600 12px/1 var(--sans); color: var(--accent2); animation: blink 1.2s step-end infinite; }
 @media print { .note-col.unsure { background: none; box-shadow: none; } }
+
+/* Combine (bottom-left, when a pair can be one neume): compact, clear of the hint */
+.pad-combine { min-height: 36px; padding: 0 0.6rem; font-size: 12px; gap: 0.25rem; }
+.pad-combine .combine-glyph { font-size: 1rem; }
+.pad-qual { padding: 0 0.65rem; }

@@ -1970,7 +1970,7 @@ function glyphIcon(text, erase = '') {
   out.width = x1 - x0 + 3;
   out.height = y1 - y0 + 3;
   out.getContext('2d').drawImage(c, x0 - 1, y0 - 1, out.width, out.height, 0, 0, out.width, out.height);
-  const icon = { url: `url(${out.toDataURL()})`, ratio: out.width / out.height };
+  const icon = { url: `url(${out.toDataURL()})`, ratio: out.width / out.height, canvas: out };
   if (document.fonts?.check(`${S}px Neanes`)) glyphIcons.set(key, icon);
   return icon;
 }
@@ -1982,15 +1982,38 @@ function setIcon(span, icon, height) {
   span.style.width = `${Math.round(height * Math.min(icon.ratio, 2.4))}px`;
 }
 
-// Quant. as a gorgon, a klasma and a tripli; Qual. as a petasti
+// Quant. as one small stacked sign: a gorgon and a klasma side by side over
+// a tripli. Qual. as a petasti.
+function stackIcon(top, bottom) {
+  if (top.some(t => !t) || !bottom) return null;
+  const gap = 10;
+  const h = Math.max(...top.map(t => t.canvas.height));
+  const topW = top.reduce((w, t) => w + t.canvas.width, 0) + gap * (top.length - 1);
+  // The tripli, drawn as wide as the row above it at most
+  const scale = Math.min(1, topW / bottom.canvas.width);
+  const bw = bottom.canvas.width * scale;
+  const bh = bottom.canvas.height * scale;
+  const W = Math.max(topW, bw);
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(W);
+  c.height = Math.ceil(h + gap * 1.5 + bh);
+  const ctx = c.getContext('2d');
+  let x = (W - topW) / 2;
+  for (const t of top) {
+    ctx.drawImage(t.canvas, x, h - t.canvas.height);   // on one baseline
+    x += t.canvas.width + gap;
+  }
+  ctx.drawImage(bottom.canvas, (W - bw) / 2, h + gap * 1.5, bw, bh);
+  return { url: `url(${c.toDataURL()})`, ratio: c.width / c.height, canvas: c };
+}
+
 function drawQuantIcons() {
   const ch = (name) => (glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '');
   const draw = () => {
     const base = ch('ison');
-    for (const span of document.querySelectorAll('#pad-quant .quant-icon')) {
-      const mark = ch(span.dataset.mark);
-      if (mark && base) setIcon(span, glyphIcon(base + mark, base), 10);
-    }
+    const sign = (name) => (ch(name) && base ? glyphIcon(base + ch(name), base) : null);
+    const stack = document.querySelector('#pad-quant .quant-stack');
+    if (stack) setIcon(stack, stackIcon([sign('gorgonAbove'), sign('klasmaAbove')], sign('tripli')), 15);
     const petasti = ch('petasti');
     const q = document.querySelector('#pad-qual .qual-glyph');
     if (petasti && q) setIcon(q, glyphIcon(petasti), 15);
@@ -2055,11 +2078,9 @@ function renderPadInner() {
       + (sign ? ` · ${TIME_NAMES[sign] || sign}` : '');
     noteEl.textContent = a?.noteName || '';
     noteEl.classList.toggle('warn', a?.warnings?.length > 0);
-    // The arrows at the edges say what a swipe does; only combining needs words
-    const combine = pairAtFocus() ? 'Swipe ← to combine' : '';
-    hintEl.textContent = el === placeholderEl
-      ? ['New note', combine].filter(Boolean).join(' · ')
-      : combine;
+    // The arrows at the edges say what a swipe does (the Combine pill, that
+    // the first swipe left combines)
+    hintEl.textContent = el === placeholderEl ? 'New note' : '';
   } else if (el && el.type === 'martyria') {
     const a = analysisResult[selectedIdx];
     const chars = martyriaChars(a);
