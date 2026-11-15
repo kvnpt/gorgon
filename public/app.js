@@ -8,6 +8,8 @@ import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
+import { importFiles, openCutter, linesFromPages, cutsFromLines, headingLines,
+  stripHtml, loadPages, deletePage, pickFiles } from './scan.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -655,6 +657,10 @@ function render() {
       html += `<div class="spacer" data-idx="${i}"></div>`;
     } else if (el.type === 'modeKey') {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
+    } else if (isScanLine(el)) {
+      // Transcription mode: the line of the scan, above the notes written for it
+      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line) });
+      else continue;      // hidden: no second insert point beside the last one
     }
 
     if (!viewOnly) html += insertPointHtml(i + 1);
@@ -685,6 +691,8 @@ function render() {
   scoreEl.innerHTML = html;
   if (viewOnly) return;
   bindScoreEvents();
+  // The scan's pictures come from this browser's store, after the first draw
+  if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
 
   // Update palette validity indicators
   renderPalette();
@@ -843,6 +851,22 @@ function bindScoreEvents() {
     });
   });
 
+  // Transcription mode: a tap on a line of the scan enlarges it (and back);
+  // its arrows move where the line starts, a note at a time
+  scoreEl.querySelectorAll('.scan-strip').forEach(strip => {
+    const k = parseInt(strip.dataset.scanLine);
+    strip.querySelector('.scan-frame')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (zoomedLines.has(k)) zoomedLines.delete(k); else zoomedLines.add(k);
+      strip.classList.toggle('zoomed', zoomedLines.has(k));
+    });
+    strip.querySelectorAll('.scan-shift').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (shiftScanLine(k, parseInt(btn.dataset.scanShift))) { haptic(); refresh(); }
+    }));
+    strip.querySelector('.scan-tools')?.addEventListener('click', (e) => e.stopPropagation());
+  });
+
   scoreEl.querySelectorAll('.note-col[data-idx]').forEach(col => {
     col.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -939,6 +963,14 @@ function insertElement(el) {
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
 function moveLeft() {
   dropPlaceholder();
+  stepLeft();
+  // The start of a line of the scan is not a symbol: step over it
+  while (selectedIdx >= 0 && isScanLine(score.elements[selectedIdx])) stepLeft();
+  render();
+  scrollSelectionIntoView();
+}
+
+function stepLeft() {
   if (selectedIdx > 0) {
     selectedIdx--;
     cursorPos = selectedIdx + 1;
@@ -950,12 +982,17 @@ function moveLeft() {
     selectedIdx = -1;
     cursorPos = 0;
   }
-  render();
-  scrollSelectionIntoView();
 }
 
 function moveRight() {
   if (selectedIdx >= 0 && score.elements[selectedIdx] === placeholderEl) placeholderEl = null;
+  stepRight();
+  while (selectedIdx >= 0 && isScanLine(score.elements[selectedIdx])) stepRight();
+  render();
+  scrollSelectionIntoView();
+}
+
+function stepRight() {
   if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
     selectedIdx++;
     cursorPos = selectedIdx + 1;
@@ -967,8 +1004,6 @@ function moveRight() {
     selectedIdx = cursorPos;
     cursorPos++;
   }
-  render();
-  scrollSelectionIntoView();
 }
 
 function scrollSelectionIntoView() {
@@ -1026,6 +1061,8 @@ function initToolbar() {
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
 
+  initScan();
+
   document.getElementById('btn-lyric').addEventListener('click', () => enterLyricMode());
 
   document.getElementById('btn-palette').addEventListener('click', (e) => {
@@ -1049,9 +1086,13 @@ function initToolbar() {
     // the symbol before it and keeps the placeholder where it is.
     const p = placeholderIndex();
     if (p >= 0 && selectedIdx === p) {
-      if (p === 0) return;
-      if (!deleteKeepingWords(p - 1)) return;
-      focusSymbol(p - 1);
+      // With the scan hidden, the start of one of its lines is invisible:
+      // backspace goes past it to the symbol before
+      let t = p - 1;
+      while (!showScan() && t >= 0 && isScanLine(score.elements[t])) t--;
+      if (t < 0) return;
+      if (!deleteKeepingWords(t)) return;
+      focusSymbol(p - 1);     // the pending symbol moves back one
       refresh();
       return;
     }
@@ -1411,6 +1452,11 @@ function lyricShiftEnd(fromIdx) {
 // syllable of its own (as when combining), or past the last note.
 function deleteKeepingWords(idx) {
   const el = score.elements[idx];
+  if (isScanLine(el)) {
+    // The start of a line of the scan stays; its arrows move it
+    toast(`This is where line ${el.line + 1} of the scan starts.`);
+    return false;
+  }
   pushHistory();
   if (el?.type === 'note' && ownSyllable(el)) pushWordsOn(idx + 1, el.lyric);
   score.elements.splice(idx, 1);
@@ -1652,7 +1698,7 @@ function insertOnEmptySlot(kind) {
 function commitAndAdvance() {
   if (selectedIdx < 0) {
     // Empty slot: nothing to commit, but step onto the next symbol if any
-    if (cursorPos < score.elements.length) focusSymbol(cursorPos);
+    if (cursorPos < score.elements.length && !isScanLine(score.elements[cursorPos])) focusSymbol(cursorPos);
     else return false;
   } else {
     const committed = score.elements[selectedIdx];
@@ -1664,8 +1710,10 @@ function commitAndAdvance() {
     // Qual. from a long press is for one note too; from its button it stays
     if (padMode === 'martyria' && committed.type === 'martyria') setPadMode('quantity');
     if (padMode === 'quality' && qualOnce) setPadMode('quantity');
-    if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
-    else enterBlank(score.elements.length);
+    // The end of a line of the scan is like the end of the score: a new
+    // blank spot there, so the line can be written to its end
+    if (selectedIdx < score.elements.length - 1 && !isScanLine(score.elements[selectedIdx + 1])) focusSymbol(selectedIdx + 1);
+    else enterBlank(selectedIdx + 1);
   }
   return true;
 }
@@ -2189,6 +2237,171 @@ function initKeyboard() {
 }
 
 // ============================================================================
+// TRANSCRIPTION MODE (scan.js): a scan of a score, line by line, above the
+// notes written for each line. A { type: 'scanline', line: k } element marks
+// where line k starts; it draws nothing when the scan is hidden or printed.
+// ============================================================================
+
+const SCAN_VIEW_KEY = 'gorgon-scan-view';
+let scanHidden = (() => { try { return localStorage.getItem(SCAN_VIEW_KEY) === 'hidden'; } catch { return false; } })();
+const zoomedLines = new Set();
+
+const isScanLine = (el) => el?.type === 'scanline';
+const hasScan = () => !!score.scan?.lines?.length;
+const showScan = () => !viewOnly && !scanHidden && hasScan();
+
+function setScanHidden(hidden) {
+  scanHidden = hidden;
+  try { localStorage.setItem(SCAN_VIEW_KEY, hidden ? 'hidden' : 'shown'); } catch { /* storage refused */ }
+  refresh();
+}
+
+// Lay new cuts over the score. Lines already placed keep their places (only
+// their part of the page changes); lines added go after the last notes and
+// lines taken away go. On a score without a scan the lines are spread over
+// its notes evenly (the heading gets none), to be set right with the arrows.
+function applyScan(pages) {
+  dropPlaceholder();
+  pushHistory();
+  const lines = linesFromPages(pages);
+  const oldPages = score.scan?.pages || [];
+  score.scan = { pages: pages.map(({ id, w, h }) => ({ id, w, h })), lines };
+  for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deletePage(p.id);
+  zoomedLines.clear();
+
+  const placed = score.elements.filter(isScanLine).length;
+  if (placed) {
+    let k = 0;
+    score.elements = score.elements.filter(el => {
+      if (!isScanLine(el)) return true;
+      if (k >= lines.length) return false;
+      el.line = k++;
+      return true;
+    });
+    while (k < lines.length) score.elements.push({ type: 'scanline', line: k++ });
+  } else {
+    const els = score.elements;
+    const n = els.length;
+    const head = headingLines(lines, pages);
+    const body = Math.max(1, lines.length - head);
+    const startOf = (k) => (k < head ? 0 : Math.round((k - head) * n / body));
+    const out = [];
+    let k = 0;
+    for (let i = 0; i <= n; i++) {
+      while (k < lines.length && startOf(k) === i) out.push({ type: 'scanline', line: k++ });
+      if (i < n) out.push(els[i]);
+    }
+    score.elements = out;
+    // A new score starts under the first line of music
+    if (!n) { enterBlank(Math.min(head + 1, out.length)); scanHidden = false; refresh(); return; }
+  }
+  scanHidden = false;
+  enterBlank(score.elements.length);
+  refresh();
+}
+
+// Move where line k starts by one symbol: back takes the last symbol of the
+// line before into it, on gives its first symbol to the line before
+function shiftScanLine(k, dir) {
+  const focus = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  const keepFocus = focus && focus !== placeholderEl ? focus : null;
+  dropPlaceholder();
+  const els = score.elements;
+  const m = els.findIndex(el => isScanLine(el) && el.line === k);
+  const j = m + dir;
+  if (m < 0 || j < 0 || j >= els.length || isScanLine(els[j])) return false;
+  pushHistory();
+  [els[m], els[j]] = [els[j], els[m]];
+  if (keepFocus) focusSymbol(els.indexOf(keepFocus));
+  else focusEmptySlot(Math.min(cursorPos, els.length));
+  return true;
+}
+
+function removeScan() {
+  dropPlaceholder();
+  pushHistory();
+  for (const p of score.scan?.pages || []) deletePage(p.id);
+  delete score.scan;
+  score.elements = score.elements.filter(el => !isScanLine(el));
+  zoomedLines.clear();
+  enterBlank(score.elements.length);
+  refresh();
+}
+
+async function importScan(add = false) {
+  const files = await pickFiles();
+  if (!files.length) return;
+  toast('Reading the scan…');
+  let pages;
+  try { pages = await importFiles(files); } catch (e) {
+    console.warn('scan import', e);
+    toast('Could not read that file. Try a photo (JPEG, PNG) or a PDF.');
+    return;
+  }
+  document.getElementById('toast').hidden = true;
+  const before = add && hasScan() ? cutsFromLines(score.scan) : [];
+  const done = await openCutter([...before, ...pages]);
+  if (!done) { for (const p of pages) deletePage(p.id); return; }
+  applyScan(done);
+}
+
+async function adjustScan() {
+  await loadPages(score.scan);
+  const done = await openCutter(cutsFromLines(score.scan));
+  if (done) applyScan(done);
+}
+
+function renderScanSheet() {
+  const sheet = document.getElementById('scan-sheet');
+  const body = sheet.querySelector('.sheet-body');
+  if (!hasScan()) {
+    body.innerHTML = `
+      <p class="share-note">Add a photo or PDF of a printed or handwritten score. Gorgon cuts it into its lines and shows each one above the notes you write for it, so you can check them line by line.</p>
+      <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-add>Choose photo or PDF</button></div>`;
+    return;
+  }
+  const n = score.scan.lines.length;
+  const pages = score.scan.pages.length;
+  body.innerHTML = `
+    <div class="sheet-label">This score's scan</div>
+    <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it, and use its arrows if a line starts a note too early or late.</p>
+    <div class="scan-sheet-row">
+      <span>Show the scan</span>
+      <button type="button" class="header-btn${scanHidden ? '' : ' accent'}" data-scan-toggle aria-pressed="${!scanHidden}">${scanHidden ? 'Off' : 'On'}</button>
+    </div>
+    <div class="sheet-actions scan-actions">
+      <button type="button" class="header-btn" data-scan-remove>Remove</button>
+      <button type="button" class="header-btn" data-scan-more>Add pages</button>
+      <button type="button" class="header-btn" data-scan-adjust>Adjust lines</button>
+    </div>`;
+}
+
+function initScan() {
+  const btn = document.getElementById('btn-scan');
+  const sheet = document.getElementById('scan-sheet');
+  if (!btn || !sheet) return;
+  const close = () => { sheet.hidden = true; };
+  btn.addEventListener('click', () => {
+    if (!hasScan()) return importScan();
+    renderScanSheet();
+    sheet.hidden = false;
+  });
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return close();
+    if (e.target.closest('[data-scan-add]')) { close(); importScan(); }
+    else if (e.target.closest('[data-scan-more]')) { close(); importScan(true); }
+    else if (e.target.closest('[data-scan-adjust]')) { close(); adjustScan(); }
+    else if (e.target.closest('[data-scan-toggle]')) { setScanHidden(!scanHidden); renderScanSheet(); }
+    else if (e.target.closest('[data-scan-remove]')) {
+      if (!confirm('Remove the scan from this score? The notes stay.')) return;
+      close();
+      removeScan();
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) close(); });
+}
+
+// ============================================================================
 // LOCAL STORAGE
 // ============================================================================
 
@@ -2207,6 +2420,7 @@ function openScore(next) {
   placeholderEl = null;
   history = [];
   analysisResult = [];
+  zoomedLines.clear();
   enterBlank(score.elements.length);
   refresh();
   saveToLocal();

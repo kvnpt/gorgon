@@ -997,6 +997,9 @@ body.keyboard-open #compose { display: none; }
     padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
   }
   #header h1 { font-size: 0.95rem; }
+  /* Up to five pills (Scores, Share, Scan, New, PDF) beside the name */
+  .edit-only.header-right { gap: 0.25rem; }
+  .edit-only .header-btn { padding: 5px 8px; min-width: 40px; letter-spacing: 0; }
   .score { padding: 1.2rem 1rem; }
   .palette-grid { grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr)); }
 }
@@ -1365,3 +1368,196 @@ body.view-missing .view-cta p { display: none; }
 .pad-arrow-r { right: 0.6rem; padding-left: 0.65rem; }
 .pad-arrow:active { background: var(--surface2); }
 #palette:not([hidden]) ~ #compose .pad-arrow { min-height: 30px; }
+
+/* ==========================================================================
+   Transcription mode (scan.js): a line of the scan above its notes
+   ========================================================================== */
+.scan-strip {
+  flex: 0 0 100%;
+  margin: 0.9rem 0 0.15rem;
+  border-top: 1px solid var(--hair);
+  padding-top: 0.35rem;
+}
+.score-content > .insert-point:first-child + .scan-strip { margin-top: 0; border-top: none; padding-top: 0; }
+.scan-view { overflow: hidden; border-radius: 4px; }
+.scan-strip.zoomed .scan-view {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.scan-frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  cursor: zoom-in;
+}
+.scan-strip.zoomed .scan-frame { width: 220%; cursor: zoom-out; }
+.scan-frame img {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.scan-missing {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  text-align: center;
+  font: 12px/1.3 var(--sans);
+  color: var(--text3);
+  background: repeating-linear-gradient(-45deg, var(--score-tint) 0 6px, transparent 6px 12px);
+}
+.scan-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+  font-family: var(--sans);
+}
+.scan-n {
+  flex: 1;
+  font-size: 0.72rem;
+  font-variant: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--text2);
+}
+.scan-shift {
+  min-width: 40px;
+  min-height: 28px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text2);
+  font: 600 15px/1 var(--sans);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.scan-shift:active { background: var(--text); color: var(--bg); border-color: var(--text); }
+/* A line of the scan with no notes yet (the heading, or a line still to
+   write) keeps a short row: tap anywhere on it to start writing there */
+.scan-strip + .insert-point:has(+ .scan-strip) { flex: 0 0 100%; min-height: 1.6rem; }
+.score-content > .insert-point:first-child:has(+ .scan-strip) { flex: 0 0 100%; min-height: 0.4rem; }
+
+.scan-sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+.scan-actions { gap: 0.5rem; flex-wrap: wrap; }
+
+/* The cutter: the whole page, with its cuts, to check and set by hand */
+.cutter {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.cutter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--hair);
+}
+.cutter-title { font: 700 15px/1.2 var(--sans); }
+.cutter-hint {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font: 13px/1.35 var(--sans);
+  color: var(--text2);
+}
+.cutter-pages {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 2rem;
+}
+.cutter-page {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto 1rem;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--hair);
+  touch-action: pan-y;
+}
+.cutter-page img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cut-band { position: absolute; left: 0; right: 0; pointer-events: none; }
+.cut-band.odd { background: rgba(242, 106, 0, 0.06); }
+.cut-band span {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: 700 11px/1.3 var(--sans);
+  text-align: center;
+}
+.cut {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px solid var(--accent);
+}
+.cut-handle {
+  position: absolute;
+  right: -10px;
+  top: -16px;
+  width: 44px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  touch-action: none;
+  cursor: ns-resize;
+}
+.cut-handle::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  top: 10px;
+  height: 10px;
+  border-top: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+}
+
+/* Dark mode: the paper turns to the score's charcoal, the ink to light */
+@media (prefers-color-scheme: dark) {
+  .scan-frame { background: transparent; }
+  .cutter-page { background: var(--score-bg); }
+  .scan-frame img, .cutter-page img { filter: invert(0.88) hue-rotate(180deg); mix-blend-mode: lighten; }
+}
+
+@media print {
+  .scan-strip, .cutter { display: none !important; }
+}
