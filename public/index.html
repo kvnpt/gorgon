@@ -28,6 +28,7 @@
     <div class="header-right edit-only">
       <button id="btn-account" class="header-btn" hidden>Sign in</button>
       <button id="btn-share" class="header-btn" hidden title="Share a link anyone can read and chant from">Share</button>
+      <button id="btn-scan" class="header-btn" title="Transcribe from a scan: show a photo or PDF of a score line by line above your notes">Scan</button>
       <button id="btn-new" class="header-btn" title="New score">New</button>
       <button id="btn-export" class="header-btn" title="Export PDF">PDF</button>
     </div>
@@ -141,6 +142,16 @@
     <div class="sheet-card" role="dialog" aria-modal="true" aria-label="Share">
       <div class="sheet-head">
         <span class="sheet-heading">Share</span>
+        <button type="button" class="header-btn" data-close>Done</button>
+      </div>
+      <div class="sheet-body"></div>
+    </div>
+  </div>
+  <!-- Transcription mode: the open score's scan (scan.js, app.js) -->
+  <div id="scan-sheet" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-label="Scan">
+      <div class="sheet-head">
+        <span class="sheet-heading">Scan</span>
         <button type="button" class="header-btn" data-close>Done</button>
       </div>
       <div class="sheet-body"></div>
