@@ -1866,7 +1866,11 @@ function renderPadMartyria() {
   const pos = martyriaPos();
   const opt = martyriaOptions(pos)[0];
   const chars = opt ? optionChars(opt, pos) : '';
-  btn.querySelector('.pad-mart-glyph').textContent = chars;
+  const span = btn.querySelector('.pad-mart-glyph');
+  if (chars && span.dataset.chars !== chars && document.fonts?.check('96px Neanes')) {
+    span.dataset.chars = chars;
+    setIcon(span, glyphIcon(chars), 24);
+  }
   const label = opt ? `Insert the martyria ${noteNameOf(opt.value)} here` : 'Insert a martyria';
   btn.title = label;
   btn.setAttribute('aria-label', label);
@@ -1875,40 +1879,65 @@ function renderPadMartyria() {
 // The Quant. button's gorgon and klasma. Both are marks the font hangs on a
 // neume (a lone one draws as nothing in Safari), so each is drawn on an Ison
 // and the Ison erased again, leaving the sign as a mask in the text colour.
-function drawQuantIcons() {
-  const run = (name) => (glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '');
-  const draw = () => {
-    for (const span of document.querySelectorAll('.quant-icon')) {
-      const base = getNeumeChar({ quantitativeNeume: 'Ison' });
-      const mark = run(span.dataset.mark);
-      if (!mark || base === '?') continue;
-      const S = 96;
-      const c = document.createElement('canvas');
-      c.width = S * 3;
-      c.height = S * 3;
-      const ctx = c.getContext('2d');
-      ctx.font = `${S}px Neanes`;
-      ctx.fillText(base + mark, S, S * 2);
-      ctx.globalCompositeOperation = 'destination-out';
-      for (let k = 0; k < 4; k++) ctx.fillText(base, S, S * 2);
-      // Crop to the sign's ink
-      const { data } = ctx.getImageData(0, 0, c.width, c.height);
-      let x0 = c.width; let y0 = c.height; let x1 = -1; let y1 = -1;
-      for (let y = 0; y < c.height; y++) {
-        for (let x = 0; x < c.width; x++) {
-          if (data[(y * c.width + x) * 4 + 3] > 40) {
-            if (x < x0) x0 = x; if (x > x1) x1 = x;
-            if (y < y0) y0 = y; if (y > y1) y1 = y;
-          }
-        }
+// Glyphs as icons: drawn in a canvas, cut to their ink (so they sit in the
+// middle of a button, whatever room the font leaves round them) and used as a
+// CSS mask in the button's colour. `erase` is drawn over again and removed,
+// for a mark that only draws on a neume (a lone one is nothing in Safari).
+const glyphIcons = new Map();
+function glyphIcon(text, erase = '') {
+  const key = text + '|' + erase;
+  if (glyphIcons.has(key)) return glyphIcons.get(key);
+  const S = 96;
+  const c = document.createElement('canvas');
+  c.width = S * 4;
+  c.height = S * 4;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.font = `${S}px Neanes`;
+  ctx.fillText(text, S * 1.5, S * 2.5);
+  if (erase) {
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let k = 0; k < 4; k++) ctx.fillText(erase, S * 1.5, S * 2.5);
+  }
+  const { data } = ctx.getImageData(0, 0, c.width, c.height);
+  let x0 = c.width; let y0 = c.height; let x1 = -1; let y1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (data[(y * c.width + x) * 4 + 3] > 40) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
       }
-      if (x1 < 0) continue;
-      const out = document.createElement('canvas');
-      out.width = x1 - x0 + 3;
-      out.height = y1 - y0 + 3;
-      out.getContext('2d').drawImage(c, x0 - 1, y0 - 1, out.width, out.height, 0, 0, out.width, out.height);
-      span.style.setProperty('--icon', `url(${out.toDataURL()})`);
     }
+  }
+  if (x1 < 0) return null;
+  const out = document.createElement('canvas');
+  out.width = x1 - x0 + 3;
+  out.height = y1 - y0 + 3;
+  out.getContext('2d').drawImage(c, x0 - 1, y0 - 1, out.width, out.height, 0, 0, out.width, out.height);
+  const icon = { url: `url(${out.toDataURL()})`, ratio: out.width / out.height };
+  if (document.fonts?.check(`${S}px Neanes`)) glyphIcons.set(key, icon);
+  return icon;
+}
+
+function setIcon(span, icon, height) {
+  if (!icon) return;
+  span.style.setProperty('--icon', icon.url);
+  span.style.height = `${height}px`;
+  span.style.width = `${Math.round(height * Math.min(icon.ratio, 2.4))}px`;
+}
+
+// Quant. as a gorgon, a klasma and a tripli; Qual. as a petasti
+function drawQuantIcons() {
+  const ch = (name) => (glyphnames[name] ? codepointToChar(glyphnames[name].codepoint) : '');
+  const draw = () => {
+    const base = ch('ison');
+    for (const span of document.querySelectorAll('#pad-quant .quant-icon')) {
+      const mark = ch(span.dataset.mark);
+      if (mark && base) setIcon(span, glyphIcon(base + mark, base), 10);
+    }
+    const petasti = ch('petasti');
+    const q = document.querySelector('#pad-qual .qual-glyph');
+    if (petasti && q) setIcon(q, glyphIcon(petasti), 15);
+    renderPadMartyria();
   };
   document.fonts?.load('96px Neanes').then(draw, draw);
 }
