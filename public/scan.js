@@ -315,10 +315,49 @@ export function headingLines(lines, pages) {
 }
 
 // ---------------------------------------------------------------------------
+// A line of the scan as a JPEG (base64), to send to be read (lib/read.js).
+// At most 1600 px wide; the text in it stays sharp enough to read.
+// ---------------------------------------------------------------------------
+
+const pictures = new Map();     // page id -> loaded <img>
+async function pagePicture(id) {
+  if (pictures.has(id)) return pictures.get(id);
+  const url = pageUrl(id);
+  if (!url) return null;
+  const img = await new Promise((resolve) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => resolve(null);
+    i.src = url;
+  });
+  if (img) pictures.set(id, img);
+  return img;
+}
+
+export async function lineJpeg(scan, k) {
+  const line = scan?.lines?.[k];
+  const page = line && scan.pages.find(p => p.id === line.page);
+  if (!page) return null;
+  await loadPages(scan);
+  const img = await pagePicture(page.id);
+  if (!img) return null;
+  const sx = img.naturalWidth / page.w;            // pictures are kept at page.w
+  const h = Math.max(1, line.y1 - line.y0);
+  const c = document.createElement('canvas');
+  c.width = page.w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, line.y0 * sx, img.naturalWidth, h * sx, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+
+// ---------------------------------------------------------------------------
 // One line of the scan, as drawn above its notes
 // ---------------------------------------------------------------------------
 
-export function stripHtml(scan, k, { shift = true, zoomed = false } = {}) {
+export function stripHtml(scan, k, { shift = true, zoomed = false, read = '' } = {}) {
   const line = scan?.lines?.[k];
   if (!line) return '';
   const page = scan.pages.find(p => p.id === line.page);
@@ -333,6 +372,8 @@ export function stripHtml(scan, k, { shift = true, zoomed = false } = {}) {
     <div class="scan-view"><div class="scan-frame" style="aspect-ratio:${page.w} / ${h}">${pic}</div></div>
     <div class="scan-tools">
       <span class="scan-n">Line ${k + 1}</span>
+      ${read === 'offer' ? `<button type="button" class="scan-read" data-scan-read title="Have Claude write this line's notes, for you to check">Read</button>` : ''}
+      ${read === 'busy' ? '<span class="scan-reading">Reading…</span>' : ''}
       ${shift ? `<button type="button" class="scan-shift" data-scan-shift="-1" title="Start this line one note earlier" aria-label="Start line ${k + 1} one note earlier">‹</button>
       <button type="button" class="scan-shift" data-scan-shift="1" title="Start this line one note later" aria-label="Start line ${k + 1} one note later">›</button>` : ''}
     </div>

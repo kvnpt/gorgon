@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install (the Worker bundles @anthropic-ai/sdk)
+        run: npm ci --omit=dev --no-audit --no-fund
       - name: Deploy Worker
         run: npx --yes wrangler@4.160.0 deploy
         env:

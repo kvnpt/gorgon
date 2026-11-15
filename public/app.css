@@ -1561,3 +1561,21 @@ body.view-missing .view-cta p { display: none; }
 @media print {
   .scan-strip, .cutter { display: none !important; }
 }
+
+/* Reading with Claude: a note it was unsure of, until checked with Next */
+.note-col.unsure { background: var(--warn-soft); box-shadow: inset 0 -2px 0 var(--warn); }
+.note-col.unsure.selected { background: var(--selected); }
+.scan-read {
+  min-height: 28px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent2);
+  font: 600 13px/1 var(--sans);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.scan-read:active { background: var(--accent); color: var(--on-accent); }
+.scan-reading { font: 600 12px/1 var(--sans); color: var(--accent2); animation: blink 1.2s step-end infinite; }
+@media print { .note-col.unsure { background: none; box-shadow: none; } }

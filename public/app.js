@@ -9,7 +9,7 @@ import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
 import { importFiles, openCutter, linesFromPages, cutsFromLines, headingLines,
-  stripHtml, loadPages, deletePage, pickFiles } from './scan.js';
+  stripHtml, loadPages, deletePage, pickFiles, lineJpeg } from './scan.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -659,7 +659,7 @@ function render() {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
     } else if (isScanLine(el)) {
       // Transcription mode: the line of the scan, above the notes written for it
-      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line) });
+      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line) });
       else continue;      // hidden: no second insert point beside the last one
     }
 
@@ -693,6 +693,8 @@ function render() {
   bindScoreEvents();
   // The scan's pictures come from this browser's store, after the first draw
   if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
+  // Whether Claude can read lines here (for each empty line's Read button)
+  if (showScan() && !readState && !readAsked) { readAsked = true; readStatus().then(st => { if (st.ready) render(); }); }
 
   // Update palette validity indicators
   renderPalette();
@@ -768,7 +770,9 @@ function noteColHtml(el, idx, analysis, pair) {
   const combine = pair ? ' combine-first' : '';
   // In Qual. the note being given a quality sign shows in purple
   const qual = isSelected && padMode === 'quality' ? ' qual-preview' : '';
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}${qual}`;
+  // A note Claude was unsure of, until it is checked (committed with Next)
+  const unsure = el.unsure && !viewOnly ? ' unsure' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}${qual}${unsure}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -864,6 +868,10 @@ function bindScoreEvents() {
       e.stopPropagation();
       if (shiftScanLine(k, parseInt(btn.dataset.scanShift))) { haptic(); refresh(); }
     }));
+    strip.querySelector('[data-scan-read]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      readLines([k]);
+    });
     strip.querySelector('.scan-tools')?.addEventListener('click', (e) => e.stopPropagation());
   });
 
@@ -1702,6 +1710,7 @@ function commitAndAdvance() {
     else return false;
   } else {
     const committed = score.elements[selectedIdx];
+    if (committed.unsure) { pushHistory(); delete committed.unsure; }   // checked
     if (committed === placeholderEl) {
       pushHistory();          // committing the pending symbol is an edit
       keepPlaceholder();
@@ -2265,7 +2274,12 @@ function applyScan(pages) {
   pushHistory();
   const lines = linesFromPages(pages);
   const oldPages = score.scan?.pages || [];
-  score.scan = { pages: pages.map(({ id, w, h }) => ({ id, w, h })), lines };
+  const oldLines = score.scan?.lines || [];
+  lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; });
+  score.scan = { pages: pages.map(({ id, w, h, musicTop }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}) })), lines };
+  // The lines above the music (title, tone): no notes, nothing to read
+  const head = headingLines(lines, pages);
+  lines.forEach((l, k) => { if (k < head) l.heading = true; });
   for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deletePage(p.id);
   zoomedLines.clear();
 
@@ -2282,7 +2296,6 @@ function applyScan(pages) {
   } else {
     const els = score.elements;
     const n = els.length;
-    const head = headingLines(lines, pages);
     const body = Math.max(1, lines.length - head);
     const startOf = (k) => (k < head ? 0 : Math.round((k - head) * n / body));
     const out = [];
@@ -2315,6 +2328,156 @@ function shiftScanLine(k, dir) {
   if (keepFocus) focusSymbol(els.indexOf(keepFocus));
   else focusEmptySlot(Math.min(cursorPos, els.length));
   return true;
+}
+
+// ----------------------------------------------------------------------------
+// Reading lines with Claude (lib/read.js): a line of the scan goes to the
+// Worker, which asks Claude for its notes. Signed in only, a monthly number
+// of lines per account. The notes land under the line, the ones Claude was
+// unsure of tinted until checked (Next). Lines written by hand on this score
+// go along as examples of how this scribe writes.
+// ----------------------------------------------------------------------------
+
+const READ_API = '/api/admin/read-line';
+let readState = null;          // { signedIn, ready, used, cap } once asked
+let readAsked = false;
+const readingLines = new Set();
+let readingScore = null;       // the score a read is filling (stops if another opens)
+
+async function readStatus(force = false) {
+  if (readState && !force) return readState;
+  const res = await fetch(READ_API, { cache: 'no-store', redirect: 'manual', credentials: 'same-origin' }).catch(() => null);
+  if (!res || res.type === 'opaqueredirect' || res.status === 401 || res.status === 0) readState = { signedIn: false };
+  else if (!res.ok) readState = { signedIn: false, off: true };
+  else {
+    const j = await res.json().catch(() => ({}));
+    readState = { signedIn: true, ready: !!j.ready, used: j.used || 0, cap: j.cap || 0 };
+  }
+  return readState;
+}
+
+function lineRange(k) {
+  const els = score.elements;
+  const m = els.findIndex(el => isScanLine(el) && el.line === k);
+  if (m < 0) return null;
+  let e = m + 1;
+  while (e < els.length && !isScanLine(els[e])) e++;
+  return [m + 1, e];
+}
+
+function lineEmpty(k) {
+  const r = lineRange(k);
+  return !!r && score.elements.slice(r[0], r[1]).every(el => el === placeholderEl);
+}
+
+const readable = (k) => !score.scan?.lines?.[k]?.heading && lineEmpty(k);
+
+// The per-line button: offered on an empty line of music once reading is on
+function readOffer(k) {
+  if (readingLines.has(k)) return 'busy';
+  return readState?.ready && readable(k) ? 'offer' : '';
+}
+
+// A written element as the reader's symbols (examples), and back
+function symbolOf(el) {
+  if (el.type === 'martyria') return { kind: 'martyria', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  if (el.type === 'rest') return { kind: 'rest', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  return {
+    kind: 'note', neume: el.quantitativeNeume, time: el.timeNeume || '', gorgon: el.gorgonNeume || '',
+    quality: el.vocalExpression || '', lyric: el.lyric || '', unsure: false,
+  };
+}
+
+const READ_TIMES = ['klasmaAbove', 'klasmaBelow', 'apli', 'dipli', 'tripli', 'tetrapli'];
+const READ_GORGONS = ['gorgonAbove', 'gorgonBelow', 'digorgon', 'trigorgon'];
+function elementOf(sym) {
+  if (sym.kind === 'martyria') return createMartyria();
+  if (sym.kind === 'rest') return createRest('leimma1');
+  if (theory.neumeValues?.neumeValues?.[sym.neume] === undefined) return null;
+  const el = createNote(sym.neume, String(sym.lyric || '').slice(0, 40));
+  if (READ_TIMES.includes(sym.time)) el.timeNeume = sym.time;
+  if (READ_GORGONS.includes(sym.gorgon)) el.gorgonNeume = sym.gorgon;
+  if (sym.quality && glyphnames[sym.quality]) el.vocalExpression = sym.quality;
+  fitTimeSign(el);
+  if (sym.unsure) el.unsure = true;
+  return el;
+}
+
+// Up to two lines of this score written by hand, nearest first
+async function readExamples(k) {
+  const lines = score.scan.lines;
+  const order = lines.map((_, j) => j).filter(j => j !== k).sort((a, b) => Math.abs(a - k) - Math.abs(b - k));
+  const out = [];
+  for (const j of order) {
+    if (out.length >= 2) break;
+    if (lines[j].heading || lines[j].by === 'claude') continue;
+    const r = lineRange(j);
+    const els = r ? score.elements.slice(r[0], r[1]).filter(el => el !== placeholderEl && ['note', 'martyria', 'rest'].includes(el.type)) : [];
+    if (els.length < 3) continue;
+    const image = await lineJpeg(score.scan, j);
+    if (image) out.push({ image, symbols: els.map(symbolOf) });
+  }
+  return out;
+}
+
+function insertRead(k, els) {
+  const r = lineRange(k);
+  if (!r) return;
+  pushHistory();
+  const focus = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  const pos = cursorPos;
+  score.elements.splice(r[0], 0, ...els);
+  if (focus) focusSymbol(score.elements.indexOf(focus));
+  else if (pos >= r[0]) cursorPos = pos + els.length;
+  score.scan.lines[k].by = 'claude';
+}
+
+async function readLines(ks) {
+  if (readingScore) return toast('Already reading. One moment.');
+  const st = await readStatus(true);
+  if (!st.signedIn) return toast(st.off ? 'Reading by Claude is not available here.' : 'Sign in to have Claude read the lines.');
+  if (!st.ready) return toast('Reading by Claude is not switched on for this site yet.');
+  const todo = ks.filter(readable);
+  if (!todo.length) return toast('No empty lines to read.');
+  readingScore = score;
+  let done = 0;
+  try {
+    for (const k of todo) {
+      if (score !== readingScore) break;
+      if (!readable(k)) continue;
+      readingLines.add(k);
+      render();
+      toast(todo.length > 1 ? `Reading line ${k + 1} (${done + 1} of ${todo.length})…` : `Reading line ${k + 1}…`);
+      const image = await lineJpeg(score.scan, k);
+      if (!image) { toast('The scan is not on this device, so its lines cannot be read here.'); break; }
+      const body = { image, mode: currentMode(), examples: await readExamples(k) };
+      const res = await fetch(READ_API, {
+        method: 'POST', credentials: 'same-origin', redirect: 'manual',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }).catch(() => null);
+      const got = res && res.status !== 0 ? await res.json().catch(() => null) : null;
+      readingLines.delete(k);
+      if (!res || !res.ok || !got) {
+        toast(got?.error || 'Could not read the line just now. Try again in a moment.');
+        break;
+      }
+      if (score !== readingScore) break;
+      readState.used = got.used ?? readState.used;
+      const els = (got.symbols || []).map(elementOf).filter(Boolean);
+      if (els.length && readable(k)) insertRead(k, els);
+      done++;
+      reanalyze();
+      render();
+    }
+  } finally {
+    readingScore = null;
+    readingLines.clear();
+    if (score.scan) { reanalyze(); render(); }
+  }
+  if (done) {
+    const unsure = score.elements.filter(el => el.unsure).length;
+    toast(`Read ${done} line${done === 1 ? '' : 's'}.${unsure ? ` ${unsure} note${unsure === 1 ? '' : 's'} to check (tinted); Next on a note marks it checked.` : ''}`);
+  }
 }
 
 function removeScan() {
@@ -2365,6 +2528,7 @@ function renderScanSheet() {
   body.innerHTML = `
     <div class="sheet-label">This score's scan</div>
     <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it, and use its arrows if a line starts a note too early or late.</p>
+    ${readSheetHtml()}
     <div class="scan-sheet-row">
       <span>Show the scan</span>
       <button type="button" class="header-btn${scanHidden ? '' : ' accent'}" data-scan-toggle aria-pressed="${!scanHidden}">${scanHidden ? 'Off' : 'On'}</button>
@@ -2376,6 +2540,17 @@ function renderScanSheet() {
     </div>`;
 }
 
+function readSheetHtml() {
+  const st = readState;
+  if (!st) return '<div class="sheet-label">Read with Claude</div><p class="share-note">Checking…</p>';
+  if (!st.signedIn) return `<div class="sheet-label">Read with Claude</div><p class="share-note">${st.off ? 'Not available here.' : 'Sign in, and Claude can write the notes of each line for you to check.'}</p>`;
+  if (!st.ready) return '<div class="sheet-label">Read with Claude</div><p class="share-note">Not switched on for this site yet.</p>';
+  const n = score.scan.lines.filter((_, k) => readable(k)).length;
+  return `<div class="sheet-label">Read with Claude</div>
+    <p class="share-note">Claude writes the notes of each empty line; the ones it is unsure of are tinted until you check them. ${st.used} of ${st.cap} lines read this month.</p>
+    <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-readall ${n ? '' : 'disabled'}>${n ? `Read ${n} empty line${n === 1 ? '' : 's'}` : 'No empty lines'}</button></div>`;
+}
+
 function initScan() {
   const btn = document.getElementById('btn-scan');
   const sheet = document.getElementById('scan-sheet');
@@ -2385,12 +2560,14 @@ function initScan() {
     if (!hasScan()) return importScan();
     renderScanSheet();
     sheet.hidden = false;
+    readStatus(true).then(() => { if (!sheet.hidden) renderScanSheet(); render(); });
   });
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet || e.target.closest('[data-close]')) return close();
     if (e.target.closest('[data-scan-add]')) { close(); importScan(); }
     else if (e.target.closest('[data-scan-more]')) { close(); importScan(true); }
     else if (e.target.closest('[data-scan-adjust]')) { close(); adjustScan(); }
+    else if (e.target.closest('[data-scan-readall]')) { close(); readLines(score.scan.lines.map((_, k) => k)); }
     else if (e.target.closest('[data-scan-toggle]')) { setScanHidden(!scanHidden); renderScanSheet(); }
     else if (e.target.closest('[data-scan-remove]')) {
       if (!confirm('Remove the scan from this score? The notes stay.')) return;
