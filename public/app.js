@@ -8,6 +8,8 @@ import { analyzeScore, computeMartyria } from './analysis.js';
 import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
+import { importFiles, openCutter, linesFromPages, cutsFromLines, headingLines,
+  stripHtml, loadPages, deletePage, pickFiles, lineJpeg } from './scan.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -655,6 +657,10 @@ function render() {
       html += `<div class="spacer" data-idx="${i}"></div>`;
     } else if (el.type === 'modeKey') {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
+    } else if (isScanLine(el)) {
+      // Transcription mode: the line of the scan, above the notes written for it
+      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line) });
+      else continue;      // hidden: no second insert point beside the last one
     }
 
     if (!viewOnly) html += insertPointHtml(i + 1);
@@ -685,6 +691,10 @@ function render() {
   scoreEl.innerHTML = html;
   if (viewOnly) return;
   bindScoreEvents();
+  // The scan's pictures come from this browser's store, after the first draw
+  if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
+  // Whether Claude can read lines here (for each empty line's Read button)
+  if (showScan() && !readState && !readAsked) { readAsked = true; readStatus().then(st => { if (st.ready) render(); }); }
 
   // Update palette validity indicators
   renderPalette();
@@ -760,7 +770,9 @@ function noteColHtml(el, idx, analysis, pair) {
   const combine = pair ? ' combine-first' : '';
   // In Qual. the note being given a quality sign shows in purple
   const qual = isSelected && padMode === 'quality' ? ' qual-preview' : '';
-  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}${qual}`;
+  // A note Claude was unsure of, until it is checked (committed with Next)
+  const unsure = el.unsure && !viewOnly ? ' unsure' : '';
+  const cls = `note-col${isSelected ? ' selected' : ''}${hasWarning ? ' has-warning' : ''}${pending}${combine}${qual}${unsure}`;
 
   const { above, below } = getSupportGlyphs(el);
 
@@ -841,6 +853,26 @@ function bindScoreEvents() {
       if (lyricMode) showLyricCaret(undefined, true);
       else refresh();
     });
+  });
+
+  // Transcription mode: a tap on a line of the scan enlarges it (and back);
+  // its arrows move where the line starts, a note at a time
+  scoreEl.querySelectorAll('.scan-strip').forEach(strip => {
+    const k = parseInt(strip.dataset.scanLine);
+    strip.querySelector('.scan-frame')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (zoomedLines.has(k)) zoomedLines.delete(k); else zoomedLines.add(k);
+      strip.classList.toggle('zoomed', zoomedLines.has(k));
+    });
+    strip.querySelectorAll('.scan-shift').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (shiftScanLine(k, parseInt(btn.dataset.scanShift))) { haptic(); refresh(); }
+    }));
+    strip.querySelector('[data-scan-read]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      readLines([k]);
+    });
+    strip.querySelector('.scan-tools')?.addEventListener('click', (e) => e.stopPropagation());
   });
 
   scoreEl.querySelectorAll('.note-col[data-idx]').forEach(col => {
@@ -939,6 +971,14 @@ function insertElement(el) {
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
 function moveLeft() {
   dropPlaceholder();
+  stepLeft();
+  // The start of a line of the scan is not a symbol: step over it
+  while (selectedIdx >= 0 && isScanLine(score.elements[selectedIdx])) stepLeft();
+  render();
+  scrollSelectionIntoView();
+}
+
+function stepLeft() {
   if (selectedIdx > 0) {
     selectedIdx--;
     cursorPos = selectedIdx + 1;
@@ -950,12 +990,17 @@ function moveLeft() {
     selectedIdx = -1;
     cursorPos = 0;
   }
-  render();
-  scrollSelectionIntoView();
 }
 
 function moveRight() {
   if (selectedIdx >= 0 && score.elements[selectedIdx] === placeholderEl) placeholderEl = null;
+  stepRight();
+  while (selectedIdx >= 0 && isScanLine(score.elements[selectedIdx])) stepRight();
+  render();
+  scrollSelectionIntoView();
+}
+
+function stepRight() {
   if (selectedIdx >= 0 && selectedIdx < score.elements.length - 1) {
     selectedIdx++;
     cursorPos = selectedIdx + 1;
@@ -967,8 +1012,6 @@ function moveRight() {
     selectedIdx = cursorPos;
     cursorPos++;
   }
-  render();
-  scrollSelectionIntoView();
 }
 
 function scrollSelectionIntoView() {
@@ -1026,6 +1069,8 @@ function initToolbar() {
 
   document.getElementById('btn-export').addEventListener('click', () => window.print());
 
+  initScan();
+
   document.getElementById('btn-lyric').addEventListener('click', () => enterLyricMode());
 
   document.getElementById('btn-palette').addEventListener('click', (e) => {
@@ -1049,9 +1094,13 @@ function initToolbar() {
     // the symbol before it and keeps the placeholder where it is.
     const p = placeholderIndex();
     if (p >= 0 && selectedIdx === p) {
-      if (p === 0) return;
-      if (!deleteKeepingWords(p - 1)) return;
-      focusSymbol(p - 1);
+      // With the scan hidden, the start of one of its lines is invisible:
+      // backspace goes past it to the symbol before
+      let t = p - 1;
+      while (!showScan() && t >= 0 && isScanLine(score.elements[t])) t--;
+      if (t < 0) return;
+      if (!deleteKeepingWords(t)) return;
+      focusSymbol(p - 1);     // the pending symbol moves back one
       refresh();
       return;
     }
@@ -1411,6 +1460,11 @@ function lyricShiftEnd(fromIdx) {
 // syllable of its own (as when combining), or past the last note.
 function deleteKeepingWords(idx) {
   const el = score.elements[idx];
+  if (isScanLine(el)) {
+    // The start of a line of the scan stays; its arrows move it
+    toast(`This is where line ${el.line + 1} of the scan starts.`);
+    return false;
+  }
   pushHistory();
   if (el?.type === 'note' && ownSyllable(el)) pushWordsOn(idx + 1, el.lyric);
   score.elements.splice(idx, 1);
@@ -1652,10 +1706,11 @@ function insertOnEmptySlot(kind) {
 function commitAndAdvance() {
   if (selectedIdx < 0) {
     // Empty slot: nothing to commit, but step onto the next symbol if any
-    if (cursorPos < score.elements.length) focusSymbol(cursorPos);
+    if (cursorPos < score.elements.length && !isScanLine(score.elements[cursorPos])) focusSymbol(cursorPos);
     else return false;
   } else {
     const committed = score.elements[selectedIdx];
+    if (committed.unsure) { pushHistory(); delete committed.unsure; }   // checked
     if (committed === placeholderEl) {
       pushHistory();          // committing the pending symbol is an edit
       keepPlaceholder();
@@ -1664,8 +1719,10 @@ function commitAndAdvance() {
     // Qual. from a long press is for one note too; from its button it stays
     if (padMode === 'martyria' && committed.type === 'martyria') setPadMode('quantity');
     if (padMode === 'quality' && qualOnce) setPadMode('quantity');
-    if (selectedIdx < score.elements.length - 1) focusSymbol(selectedIdx + 1);
-    else enterBlank(score.elements.length);
+    // The end of a line of the scan is like the end of the score: a new
+    // blank spot there, so the line can be written to its end
+    if (selectedIdx < score.elements.length - 1 && !isScanLine(score.elements[selectedIdx + 1])) focusSymbol(selectedIdx + 1);
+    else enterBlank(selectedIdx + 1);
   }
   return true;
 }
@@ -2189,6 +2246,339 @@ function initKeyboard() {
 }
 
 // ============================================================================
+// TRANSCRIPTION MODE (scan.js): a scan of a score, line by line, above the
+// notes written for each line. A { type: 'scanline', line: k } element marks
+// where line k starts; it draws nothing when the scan is hidden or printed.
+// ============================================================================
+
+const SCAN_VIEW_KEY = 'gorgon-scan-view';
+let scanHidden = (() => { try { return localStorage.getItem(SCAN_VIEW_KEY) === 'hidden'; } catch { return false; } })();
+const zoomedLines = new Set();
+
+const isScanLine = (el) => el?.type === 'scanline';
+const hasScan = () => !!score.scan?.lines?.length;
+const showScan = () => !viewOnly && !scanHidden && hasScan();
+
+function setScanHidden(hidden) {
+  scanHidden = hidden;
+  try { localStorage.setItem(SCAN_VIEW_KEY, hidden ? 'hidden' : 'shown'); } catch { /* storage refused */ }
+  refresh();
+}
+
+// Lay new cuts over the score. Lines already placed keep their places (only
+// their part of the page changes); lines added go after the last notes and
+// lines taken away go. On a score without a scan the lines are spread over
+// its notes evenly (the heading gets none), to be set right with the arrows.
+function applyScan(pages) {
+  dropPlaceholder();
+  pushHistory();
+  const lines = linesFromPages(pages);
+  const oldPages = score.scan?.pages || [];
+  const oldLines = score.scan?.lines || [];
+  lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; });
+  score.scan = { pages: pages.map(({ id, w, h, musicTop }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}) })), lines };
+  // The lines above the music (title, tone): no notes, nothing to read
+  const head = headingLines(lines, pages);
+  lines.forEach((l, k) => { if (k < head) l.heading = true; });
+  for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deletePage(p.id);
+  zoomedLines.clear();
+
+  const placed = score.elements.filter(isScanLine).length;
+  if (placed) {
+    let k = 0;
+    score.elements = score.elements.filter(el => {
+      if (!isScanLine(el)) return true;
+      if (k >= lines.length) return false;
+      el.line = k++;
+      return true;
+    });
+    while (k < lines.length) score.elements.push({ type: 'scanline', line: k++ });
+  } else {
+    const els = score.elements;
+    const n = els.length;
+    const body = Math.max(1, lines.length - head);
+    const startOf = (k) => (k < head ? 0 : Math.round((k - head) * n / body));
+    const out = [];
+    let k = 0;
+    for (let i = 0; i <= n; i++) {
+      while (k < lines.length && startOf(k) === i) out.push({ type: 'scanline', line: k++ });
+      if (i < n) out.push(els[i]);
+    }
+    score.elements = out;
+    // A new score starts under the first line of music
+    if (!n) { enterBlank(Math.min(head + 1, out.length)); scanHidden = false; refresh(); return; }
+  }
+  scanHidden = false;
+  enterBlank(score.elements.length);
+  refresh();
+}
+
+// Move where line k starts by one symbol: back takes the last symbol of the
+// line before into it, on gives its first symbol to the line before
+function shiftScanLine(k, dir) {
+  const focus = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  const keepFocus = focus && focus !== placeholderEl ? focus : null;
+  dropPlaceholder();
+  const els = score.elements;
+  const m = els.findIndex(el => isScanLine(el) && el.line === k);
+  const j = m + dir;
+  if (m < 0 || j < 0 || j >= els.length || isScanLine(els[j])) return false;
+  pushHistory();
+  [els[m], els[j]] = [els[j], els[m]];
+  if (keepFocus) focusSymbol(els.indexOf(keepFocus));
+  else focusEmptySlot(Math.min(cursorPos, els.length));
+  return true;
+}
+
+// ----------------------------------------------------------------------------
+// Reading lines with Claude (lib/read.js): a line of the scan goes to the
+// Worker, which asks Claude for its notes. Signed in only, a monthly number
+// of lines per account. The notes land under the line, the ones Claude was
+// unsure of tinted until checked (Next). Lines written by hand on this score
+// go along as examples of how this scribe writes.
+// ----------------------------------------------------------------------------
+
+const READ_API = '/api/admin/read-line';
+let readState = null;          // { signedIn, ready, used, cap } once asked
+let readAsked = false;
+const readingLines = new Set();
+let readingScore = null;       // the score a read is filling (stops if another opens)
+
+async function readStatus(force = false) {
+  if (readState && !force) return readState;
+  const res = await fetch(READ_API, { cache: 'no-store', redirect: 'manual', credentials: 'same-origin' }).catch(() => null);
+  if (!res || res.type === 'opaqueredirect' || res.status === 401 || res.status === 0) readState = { signedIn: false };
+  else if (!res.ok) readState = { signedIn: false, off: true };
+  else {
+    const j = await res.json().catch(() => ({}));
+    readState = { signedIn: true, ready: !!j.ready, used: j.used || 0, cap: j.cap || 0 };
+  }
+  return readState;
+}
+
+function lineRange(k) {
+  const els = score.elements;
+  const m = els.findIndex(el => isScanLine(el) && el.line === k);
+  if (m < 0) return null;
+  let e = m + 1;
+  while (e < els.length && !isScanLine(els[e])) e++;
+  return [m + 1, e];
+}
+
+function lineEmpty(k) {
+  const r = lineRange(k);
+  return !!r && score.elements.slice(r[0], r[1]).every(el => el === placeholderEl);
+}
+
+const readable = (k) => !score.scan?.lines?.[k]?.heading && lineEmpty(k);
+
+// The per-line button: offered on an empty line of music once reading is on
+function readOffer(k) {
+  if (readingLines.has(k)) return 'busy';
+  return readState?.ready && readable(k) ? 'offer' : '';
+}
+
+// A written element as the reader's symbols (examples), and back
+function symbolOf(el) {
+  if (el.type === 'martyria') return { kind: 'martyria', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  if (el.type === 'rest') return { kind: 'rest', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  return {
+    kind: 'note', neume: el.quantitativeNeume, time: el.timeNeume || '', gorgon: el.gorgonNeume || '',
+    quality: el.vocalExpression || '', lyric: el.lyric || '', unsure: false,
+  };
+}
+
+const READ_TIMES = ['klasmaAbove', 'klasmaBelow', 'apli', 'dipli', 'tripli', 'tetrapli'];
+const READ_GORGONS = ['gorgonAbove', 'gorgonBelow', 'digorgon', 'trigorgon'];
+function elementOf(sym) {
+  if (sym.kind === 'martyria') return createMartyria();
+  if (sym.kind === 'rest') return createRest('leimma1');
+  if (theory.neumeValues?.neumeValues?.[sym.neume] === undefined) return null;
+  const el = createNote(sym.neume, String(sym.lyric || '').slice(0, 40));
+  if (READ_TIMES.includes(sym.time)) el.timeNeume = sym.time;
+  if (READ_GORGONS.includes(sym.gorgon)) el.gorgonNeume = sym.gorgon;
+  if (sym.quality && glyphnames[sym.quality]) el.vocalExpression = sym.quality;
+  fitTimeSign(el);
+  if (sym.unsure) el.unsure = true;
+  return el;
+}
+
+// Up to two lines of this score written by hand, nearest first
+async function readExamples(k) {
+  const lines = score.scan.lines;
+  const order = lines.map((_, j) => j).filter(j => j !== k).sort((a, b) => Math.abs(a - k) - Math.abs(b - k));
+  const out = [];
+  for (const j of order) {
+    if (out.length >= 2) break;
+    if (lines[j].heading || lines[j].by === 'claude') continue;
+    const r = lineRange(j);
+    const els = r ? score.elements.slice(r[0], r[1]).filter(el => el !== placeholderEl && ['note', 'martyria', 'rest'].includes(el.type)) : [];
+    if (els.length < 3) continue;
+    const image = await lineJpeg(score.scan, j);
+    if (image) out.push({ image, symbols: els.map(symbolOf) });
+  }
+  return out;
+}
+
+function insertRead(k, els) {
+  const r = lineRange(k);
+  if (!r) return;
+  pushHistory();
+  const focus = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+  const pos = cursorPos;
+  score.elements.splice(r[0], 0, ...els);
+  if (focus) focusSymbol(score.elements.indexOf(focus));
+  else if (pos >= r[0]) cursorPos = pos + els.length;
+  score.scan.lines[k].by = 'claude';
+}
+
+async function readLines(ks) {
+  if (readingScore) return toast('Already reading. One moment.');
+  const st = await readStatus(true);
+  if (!st.signedIn) return toast(st.off ? 'Reading by Claude is not available here.' : 'Sign in to have Claude read the lines.');
+  if (!st.ready) return toast('Reading by Claude is not switched on for this site yet.');
+  const todo = ks.filter(readable);
+  if (!todo.length) return toast('No empty lines to read.');
+  readingScore = score;
+  let done = 0;
+  try {
+    for (const k of todo) {
+      if (score !== readingScore) break;
+      if (!readable(k)) continue;
+      readingLines.add(k);
+      render();
+      toast(todo.length > 1 ? `Reading line ${k + 1} (${done + 1} of ${todo.length})…` : `Reading line ${k + 1}…`);
+      const image = await lineJpeg(score.scan, k);
+      if (!image) { toast('The scan is not on this device, so its lines cannot be read here.'); break; }
+      const body = { image, mode: currentMode(), examples: await readExamples(k) };
+      const res = await fetch(READ_API, {
+        method: 'POST', credentials: 'same-origin', redirect: 'manual',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      }).catch(() => null);
+      const got = res && res.status !== 0 ? await res.json().catch(() => null) : null;
+      readingLines.delete(k);
+      if (!res || !res.ok || !got) {
+        toast(got?.error || 'Could not read the line just now. Try again in a moment.');
+        break;
+      }
+      if (score !== readingScore) break;
+      readState.used = got.used ?? readState.used;
+      const els = (got.symbols || []).map(elementOf).filter(Boolean);
+      if (els.length && readable(k)) insertRead(k, els);
+      done++;
+      reanalyze();
+      render();
+    }
+  } finally {
+    readingScore = null;
+    readingLines.clear();
+    if (score.scan) { reanalyze(); render(); }
+  }
+  if (done) {
+    const unsure = score.elements.filter(el => el.unsure).length;
+    toast(`Read ${done} line${done === 1 ? '' : 's'}.${unsure ? ` ${unsure} note${unsure === 1 ? '' : 's'} to check (tinted); Next on a note marks it checked.` : ''}`);
+  }
+}
+
+function removeScan() {
+  dropPlaceholder();
+  pushHistory();
+  for (const p of score.scan?.pages || []) deletePage(p.id);
+  delete score.scan;
+  score.elements = score.elements.filter(el => !isScanLine(el));
+  zoomedLines.clear();
+  enterBlank(score.elements.length);
+  refresh();
+}
+
+async function importScan(add = false) {
+  const files = await pickFiles();
+  if (!files.length) return;
+  toast('Reading the scan…');
+  let pages;
+  try { pages = await importFiles(files); } catch (e) {
+    console.warn('scan import', e);
+    toast('Could not read that file. Try a photo (JPEG, PNG) or a PDF.');
+    return;
+  }
+  document.getElementById('toast').hidden = true;
+  const before = add && hasScan() ? cutsFromLines(score.scan) : [];
+  const done = await openCutter([...before, ...pages]);
+  if (!done) { for (const p of pages) deletePage(p.id); return; }
+  applyScan(done);
+}
+
+async function adjustScan() {
+  await loadPages(score.scan);
+  const done = await openCutter(cutsFromLines(score.scan));
+  if (done) applyScan(done);
+}
+
+function renderScanSheet() {
+  const sheet = document.getElementById('scan-sheet');
+  const body = sheet.querySelector('.sheet-body');
+  if (!hasScan()) {
+    body.innerHTML = `
+      <p class="share-note">Add a photo or PDF of a printed or handwritten score. Gorgon cuts it into its lines and shows each one above the notes you write for it, so you can check them line by line.</p>
+      <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-add>Choose photo or PDF</button></div>`;
+    return;
+  }
+  const n = score.scan.lines.length;
+  const pages = score.scan.pages.length;
+  body.innerHTML = `
+    <div class="sheet-label">This score's scan</div>
+    <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it, and use its arrows if a line starts a note too early or late.</p>
+    ${readSheetHtml()}
+    <div class="scan-sheet-row">
+      <span>Show the scan</span>
+      <button type="button" class="header-btn${scanHidden ? '' : ' accent'}" data-scan-toggle aria-pressed="${!scanHidden}">${scanHidden ? 'Off' : 'On'}</button>
+    </div>
+    <div class="sheet-actions scan-actions">
+      <button type="button" class="header-btn" data-scan-remove>Remove</button>
+      <button type="button" class="header-btn" data-scan-more>Add pages</button>
+      <button type="button" class="header-btn" data-scan-adjust>Adjust lines</button>
+    </div>`;
+}
+
+function readSheetHtml() {
+  const st = readState;
+  if (!st) return '<div class="sheet-label">Read with Claude</div><p class="share-note">Checking…</p>';
+  if (!st.signedIn) return `<div class="sheet-label">Read with Claude</div><p class="share-note">${st.off ? 'Not available here.' : 'Sign in, and Claude can write the notes of each line for you to check.'}</p>`;
+  if (!st.ready) return '<div class="sheet-label">Read with Claude</div><p class="share-note">Not switched on for this site yet.</p>';
+  const n = score.scan.lines.filter((_, k) => readable(k)).length;
+  return `<div class="sheet-label">Read with Claude</div>
+    <p class="share-note">Claude writes the notes of each empty line; the ones it is unsure of are tinted until you check them. ${st.used} of ${st.cap} lines read this month.</p>
+    <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-readall ${n ? '' : 'disabled'}>${n ? `Read ${n} empty line${n === 1 ? '' : 's'}` : 'No empty lines'}</button></div>`;
+}
+
+function initScan() {
+  const btn = document.getElementById('btn-scan');
+  const sheet = document.getElementById('scan-sheet');
+  if (!btn || !sheet) return;
+  const close = () => { sheet.hidden = true; };
+  btn.addEventListener('click', () => {
+    if (!hasScan()) return importScan();
+    renderScanSheet();
+    sheet.hidden = false;
+    readStatus(true).then(() => { if (!sheet.hidden) renderScanSheet(); render(); });
+  });
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) return close();
+    if (e.target.closest('[data-scan-add]')) { close(); importScan(); }
+    else if (e.target.closest('[data-scan-more]')) { close(); importScan(true); }
+    else if (e.target.closest('[data-scan-adjust]')) { close(); adjustScan(); }
+    else if (e.target.closest('[data-scan-readall]')) { close(); readLines(score.scan.lines.map((_, k) => k)); }
+    else if (e.target.closest('[data-scan-toggle]')) { setScanHidden(!scanHidden); renderScanSheet(); }
+    else if (e.target.closest('[data-scan-remove]')) {
+      if (!confirm('Remove the scan from this score? The notes stay.')) return;
+      close();
+      removeScan();
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) close(); });
+}
+
+// ============================================================================
 // LOCAL STORAGE
 // ============================================================================
 
@@ -2207,6 +2597,7 @@ function openScore(next) {
   placeholderEl = null;
   history = [];
   analysisResult = [];
+  zoomedLines.clear();
   enterBlank(score.elements.length);
   refresh();
   saveToLocal();
