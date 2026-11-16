@@ -2298,7 +2298,7 @@ function applyScan(pages) {
   const lines = linesFromPages(pages);
   const oldPages = score.scan?.pages || [];
   const oldLines = score.scan?.lines || [];
-  lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; });
+  lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; if (oldLines[k]?.read) l.read = oldLines[k].read; });
   score.scan = { pages: pages.map(({ id, w, h, musicTop }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}) })), lines };
   // The lines above the music (title, tone): no notes, nothing to read
   const head = headingLines(lines, pages);
@@ -2563,7 +2563,12 @@ async function readLines(ks) {
       if (score !== readingScore) break;
       readState.used = got.used ?? readState.used;
       const els = (got.symbols || []).map(elementOf).filter(Boolean);
-      if (els.length && readable(k)) insertRead(k, els);
+      if (els.length && readable(k)) {
+        insertRead(k, els);
+        // What Claude said, as it said it, kept with the line: corrections
+        // overwrite the notes, and this is what they are measured against
+        score.scan.lines[k].read = (got.symbols || []).map(x => [x.kind, x.neume, x.note, x.time, x.gorgon, x.quality, x.lyric, x.unsure ? 1 : 0]);
+      }
       done++;
       reanalyze();
       render();
