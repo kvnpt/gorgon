@@ -17,7 +17,10 @@
 
 const DB_NAME = 'gorgon-scans';
 const STORE = 'pages';
-const MAX_W = 1600;          // pages are kept at most this wide (px)
+const MAX_W = 2400;          // pages are kept at most this wide (px): the small
+                             // signs need the pixels, and the reader takes
+                             // pictures up to 2576 px on the long edge
+const MAX_READ_W = 2576;
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -315,8 +318,8 @@ export function headingLines(lines, pages) {
 }
 
 // ---------------------------------------------------------------------------
-// A line of the scan as a JPEG (base64), to send to be read (lib/read.js).
-// At most 1600 px wide; the text in it stays sharp enough to read.
+// A line of the scan as a JPEG (base64), to send to be read (lib/read.js),
+// at the sharpness the page was kept at.
 // ---------------------------------------------------------------------------
 
 const pictures = new Map();     // page id -> loaded <img>
@@ -343,9 +346,10 @@ export async function lineJpeg(scan, k) {
   if (!img) return null;
   const sx = img.naturalWidth / page.w;            // pictures are kept at page.w
   const h = Math.max(1, line.y1 - line.y0);
+  const out = Math.min(1, MAX_READ_W / Math.max(page.w, h));
   const c = document.createElement('canvas');
-  c.width = page.w;
-  c.height = h;
+  c.width = Math.round(page.w * out);
+  c.height = Math.max(1, Math.round(h * out));
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, c.width, c.height);
@@ -357,7 +361,7 @@ export async function lineJpeg(scan, k) {
 // One line of the scan, as drawn above its notes
 // ---------------------------------------------------------------------------
 
-export function stripHtml(scan, k, { shift = true, zoomed = false, read = '' } = {}) {
+export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', off = '' } = {}) {
   const line = scan?.lines?.[k];
   if (!line) return '';
   const page = scan.pages.find(p => p.id === line.page);
@@ -371,9 +375,10 @@ export function stripHtml(scan, k, { shift = true, zoomed = false, read = '' } =
   return `<div class="scan-strip${zoomed ? ' zoomed' : ''}" data-scan-line="${k}">
     <div class="scan-view"><div class="scan-frame" style="aspect-ratio:${page.w} / ${h}">${pic}</div></div>
     <div class="scan-tools">
-      <span class="scan-n">Line ${k + 1}</span>
+      <span class="scan-n">Line ${k + 1}${off ? ` <span class="scan-off">${esc(off)}</span>` : ''}</span>
       ${read === 'offer' ? `<button type="button" class="scan-read" data-scan-read title="Have Claude write this line's notes, for you to check">Read</button>` : ''}
       ${read === 'busy' ? '<span class="scan-reading">Reading…</span>' : ''}
+      ${read === 'check' ? `<button type="button" class="scan-read" data-scan-checked title="This line is right now: clear its tints, and have Claude follow it on the lines it reads next">Checked</button>` : ''}
       ${shift ? `<button type="button" class="scan-shift" data-scan-shift="-1" title="Start this line one note earlier" aria-label="Start line ${k + 1} one note earlier">‹</button>
       <button type="button" class="scan-shift" data-scan-shift="1" title="Start this line one note later" aria-label="Start line ${k + 1} one note later">›</button>` : ''}
     </div>
