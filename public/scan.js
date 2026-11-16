@@ -6,8 +6,10 @@
 // so the two can be read one against the other and corrected with the pad.
 //
 // Where things live:
-//   score.scan = { pages: [{ id, w, h }], lines: [{ page, y0, y1 }] }
-//     in the score itself (saved and synced like the rest);
+//   score.scan = { pages: [{ id, w, h, skew? }], lines: [{ page, y0, y1, skew? }] }
+//     in the score itself (saved and synced like the rest). A line written
+//     on a slant has skew, its rise per pixel across (dy/dx): y0 and y1
+//     are then where its cuts cross the middle of the page;
 //   { type: 'scanline', line: k } elements in score.elements, where line k
 //     of the scan starts (app.js). They draw nothing outside transcription
 //     mode and never print, so the score reflows as usual;
@@ -155,8 +157,8 @@ export async function importFiles(files) {
     await putPage(id, blob);
     const url = URL.createObjectURL(blob);
     urls.set(id, url);
-    const cuts = detectCuts(c);
-    pages.push({ id, w: c.width, h: c.height, url, cuts, musicTop: musicTop(c, cuts) });
+    const { cuts, skew } = detectLines(c);
+    pages.push({ id, w: c.width, h: c.height, url, cuts, skew, musicTop: musicTop(c, cuts, skew) });
   }
   return pages;
 }
@@ -169,35 +171,34 @@ export async function importFiles(files) {
 // which autocorrelation finds; the cuts are then the set of low points in
 // the profile, spaced as near that period as they can be (dynamic
 // programming), so a line's neumes and words stay together.
+//
+// Handwriting drifts: a line may climb or fall across the page, and a photo
+// may be tilted. So the rows are not taken straight across but along the
+// slant found for each part of the page: the one that gathers the ink into
+// the sharpest rows. A cut is then a slanted line, given by where it
+// crosses the middle of the page and the slant there (skewAt).
 // ---------------------------------------------------------------------------
 
-export function detectCuts(canvas) {
-  const W = canvas.width;
-  const H = canvas.height;
-  const data = canvas.getContext('2d').getImageData(0, 0, W, H).data;
-  const x0 = Math.floor(W * 0.05);
-  const x1 = Math.ceil(W * 0.95);
+const BANDS = 32;            // the page in vertical bands, to shear the rows
+const SLANTS = 57;           // slants tried, from -MAX_SLANT to +MAX_SLANT
+const MAX_SLANT = 0.14;      // dy/dx, about 8 degrees either way
 
-  // Ink threshold: well below the paper's brightness (photos are rarely white)
-  const lum = new Uint8Array(W * H);
-  const hist = new Uint32Array(256);
-  for (let i = 0, p = 0; p < W * H; i += 4, p++) {
-    const v = (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000 | 0;
-    lum[p] = v;
-    hist[v]++;
+/** The slant of the writing at height y of a page (dy/dx; 0 = level) */
+export function skewAt(page, y) {
+  const f = page?.skew;
+  if (!f?.length) return 0;
+  if (y <= f[0][0]) return f[0][1];
+  for (let i = 1; i < f.length; i++) {
+    if (y <= f[i][0]) {
+      const t = (y - f[i - 1][0]) / Math.max(1, f[i][0] - f[i - 1][0]);
+      return f[i - 1][1] + (f[i][1] - f[i - 1][1]) * t;
+    }
   }
-  let acc = 0;
-  let paper = 255;
-  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > W * H * 0.5) { paper = v; break; } }
-  const thr = paper * 0.62;
+  return f[f.length - 1][1];
+}
 
-  const rows = new Float64Array(H);
-  for (let y = 0; y < H; y++) {
-    let n = 0;
-    for (let x = x0, p = y * W + x0; x < x1; x++, p++) if (lum[p] < thr) n++;
-    rows[y] = n;
-  }
-  const k = Math.max(3, Math.round(H / 150)) | 1;
+function smooth(rows, k) {
+  const H = rows.length;
   const sm = new Float64Array(H);
   let run = 0;
   for (let y = 0; y < H + (k >> 1); y++) {
@@ -206,18 +207,11 @@ export function detectCuts(canvas) {
     const c = y - (k >> 1);
     if (c >= 0 && c < H) sm[c] = run / k;
   }
-  let peak = 0;
-  for (const v of sm) peak = Math.max(peak, v);
-  if (peak <= 0) return [0, H];
+  return sm;
+}
 
-  let top = 0;
-  while (top < H - 1 && sm[top] <= peak * 0.02) top++;
-  let bot = H - 1;
-  while (bot > top && sm[bot] <= peak * 0.02) bot--;
-  top = Math.max(0, top - k);
-  bot = Math.min(H, bot + k);
-
-  // Period: the strongest autocorrelation between H/40 and H/5
+// The spacing of the lines: the strongest autocorrelation between H/40 and H/5
+function period(sm, top, bot, H) {
   let mean = 0;
   for (let y = top; y < bot; y++) mean += sm[y];
   mean /= Math.max(1, bot - top);
@@ -228,6 +222,120 @@ export function detectCuts(canvas) {
     for (let y = top; y + L < bot; y++) s += (sm[y] - mean) * (sm[y + L] - mean);
     if (s > best) { best = s; P = L; }
   }
+  return P;
+}
+
+/** The cuts of a page (where they cross its middle) and its slant: { cuts, skew } */
+export function detectLines(canvas) {
+  const W = canvas.width;
+  const H = canvas.height;
+  const data = canvas.getContext('2d').getImageData(0, 0, W, H).data;
+  const x0 = Math.floor(W * 0.05);
+  const x1 = Math.ceil(W * 0.95);
+
+  // Ink threshold: well below the paper's brightness (photos are rarely white)
+  const hist = new Uint32Array(256);
+  const lum = new Uint8Array(W * H);
+  for (let i = 0, p = 0; p < W * H; i += 4, p++) {
+    const v = (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000 | 0;
+    lum[p] = v;
+    hist[v]++;
+  }
+  let acc = 0;
+  let paper = 255;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > W * H * 0.5) { paper = v; break; } }
+  const thr = paper * 0.62;
+
+  // Ink per row in each vertical band of the page
+  const bw = (x1 - x0) / BANDS;
+  const band = Array.from({ length: BANDS }, () => new Float32Array(H));
+  for (let y = 0; y < H; y++) {
+    for (let x = x0, p = y * W + x0; x < x1; x++, p++) {
+      if (lum[p] < thr) band[Math.min(BANDS - 1, ((x - x0) / bw) | 0)][y]++;
+    }
+  }
+  const xc = Array.from({ length: BANDS }, (_, b) => x0 + (b + 0.5) * bw - W / 2);   // from the middle
+  // The rows taken along a slant: row y is the line through the middle of
+  // the page at y; slantOf gives the slant for each y
+  const rowsAlong = (slantOf) => {
+    const rows = new Float64Array(H);
+    for (let y = 0; y < H; y++) {
+      const s = slantOf(y);
+      let n = 0;
+      for (let b = 0; b < BANDS; b++) {
+        const yy = Math.round(y + s * xc[b]);
+        if (yy >= 0 && yy < H) n += band[b][yy];
+      }
+      rows[y] = n;
+    }
+    return rows;
+  };
+
+  const k = Math.max(3, Math.round(H / 150)) | 1;
+  const empty = { cuts: [0, H], skew: [] };
+
+  // Each slant's rows, and how sharp they are (ink squared, summed up the page)
+  const slants = Array.from({ length: SLANTS }, (_, i) => -MAX_SLANT + i * (2 * MAX_SLANT / (SLANTS - 1)));
+  const level = (SLANTS - 1) / 2;
+  const sharp = slants.map((s) => {
+    const rows = smooth(rowsAlong(() => s), 3);
+    const cum = new Float64Array(H + 1);
+    for (let y = 0; y < H; y++) cum[y + 1] = cum[y] + rows[y] * rows[y];
+    return cum;
+  });
+  if (sharp[level][H] <= 0) return empty;
+  let whole = level;
+  for (let i = 0; i < SLANTS; i++) if (sharp[i][H] > sharp[whole][H] * (i === level ? 1 : 1.02)) whole = i;
+
+  // Line spacing, from the rows along the slant that suits the whole page
+  const P0 = period(smooth(rowsAlong(() => slants[whole]), k), 0, H, H);
+
+  // The slant by height: for each stretch of about three lines, the slant
+  // with the sharpest rows there. Level wins unless another is clearly
+  // sharper, so a straight page stays straight
+  const field = [];
+  const step = Math.max(8, Math.round(P0 / 2));
+  const half = Math.round(P0 * 1.5);
+  // A stretch with next to no ink (margins, specks) has no slant of its own
+  const faint = sharp[whole][H] / H * 2 * half * 0.05;
+  for (let yc = step; yc < H; yc += step) {
+    const a = Math.max(0, yc - half);
+    const b = Math.min(H, yc + half);
+    const at = (i) => sharp[i][b] - sharp[i][a];
+    if (at(level) <= faint && at(whole) <= faint) { field.push([yc, null]); continue; }
+    let best = level;
+    for (let i = 0; i < SLANTS; i++) if (at(i) > at(best) * (best === level && i !== level ? 1.04 : 1)) best = i;
+    field.push([yc, slants[best]]);
+  }
+  // Blank stretches take their neighbours' slant; then a median of three
+  for (let i = 0; i < field.length; i++) {
+    if (field[i][1] !== null) continue;
+    let j = i - 1;
+    while (j >= 0 && field[j][1] === null) j--;
+    let n = i + 1;
+    while (n < field.length && field[n][1] === null) n++;
+    field[i] = [field[i][0], j >= 0 ? field[j][1] : n < field.length ? field[n][1] : 0];
+  }
+  const med = field.map((f, i) => {
+    const v = [field[Math.max(0, i - 1)][1], f[1], field[Math.min(field.length - 1, i + 1)][1]].sort((p, q) => p - q);
+    return [f[0], Math.round(v[1] * 1000) / 1000];
+  });
+  const skew = med.some(f => Math.abs(f[1]) >= 0.004) ? med : [];
+  const slantOf = (y) => skewAt({ skew }, y);
+
+  const sm = smooth(rowsAlong(slantOf), k);
+  let peak = 0;
+  for (const v of sm) peak = Math.max(peak, v);
+  if (peak <= 0) return empty;
+
+  let top = 0;
+  while (top < H - 1 && sm[top] <= peak * 0.02) top++;
+  let bot = H - 1;
+  while (bot > top && sm[bot] <= peak * 0.02) bot--;
+  top = Math.max(0, top - k);
+  bot = Math.min(H, bot + k);
+
+  const P = period(sm, top, bot, H);
 
   // Low points
   const valleys = [];
@@ -252,10 +360,32 @@ export function detectCuts(canvas) {
       if (c < cost[j]) { cost[j] = c; prev[j] = i; }
     }
   }
-  if (cost[n - 1] === Infinity) return [top, bot];
+  if (cost[n - 1] === Infinity) return { cuts: [top, bot], skew };
   const cuts = [];
   for (let j = n - 1; j >= 0; j = prev[j]) cuts.unshift(cand[j]);
-  return cuts;
+  return { cuts, skew };
+}
+
+/** A page's lines found afresh from its picture: { cuts, skew, musicTop }, or null without it */
+async function findAgain(page) {
+  const url = page.url || pageUrl(page.id);
+  if (!url) return null;
+  const img = await new Promise((resolve) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => resolve(null);
+    i.src = url;
+  });
+  if (!img) return null;
+  const c = document.createElement('canvas');
+  c.width = page.w;
+  c.height = page.h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const { cuts, skew } = detectLines(c);
+  return { cuts, skew, musicTop: musicTop(c, cuts, skew) };
 }
 
 /**
@@ -263,7 +393,7 @@ export function detectCuts(canvas) {
  * spreads across most of the width. A heading (title, tone) is centred
  * and narrower, so its bands come before it.
  */
-export function musicTop(canvas, cuts) {
+export function musicTop(canvas, cuts, skew = []) {
   const W = canvas.width;
   const data = canvas.getContext('2d').getImageData(0, 0, W, canvas.height).data;
   const x0 = Math.floor(W * 0.05);
@@ -272,11 +402,14 @@ export function musicTop(canvas, cuts) {
   for (let b = 0; b + 1 < cuts.length; b++) {
     const ya = Math.round(cuts[b]);
     const yb = Math.round(cuts[b + 1]);
+    const s = skewAt({ skew }, (ya + yb) / 2);
     let first = -1;
     let last = -1;
     for (let x = x0; x < x1; x += 2) {
+      const dy = Math.round(s * (x - W / 2));
       for (let y = ya; y < yb; y += 2) {
-        if (lumAt(x, y) < 110) { if (first < 0) first = x; last = x; break; }
+        const yy = y + dy;
+        if (yy >= 0 && yy < canvas.height && lumAt(x, yy) < 110) { if (first < 0) first = x; last = x; break; }
       }
     }
     if (first >= 0 && (last - first) / (x1 - x0) > 0.7) return ya;
@@ -284,13 +417,17 @@ export function musicTop(canvas, cuts) {
   return 0;
 }
 
-/** Cuts -> lines: [{ page, y0, y1 }] */
+/** Cuts -> lines: [{ page, y0, y1, skew? }] */
 export function linesFromPages(pages) {
   const lines = [];
   for (const p of pages) {
     const cuts = [...p.cuts].sort((a, b) => a - b);
     for (let i = 0; i + 1 < cuts.length; i++) {
-      if (cuts[i + 1] - cuts[i] > 8) lines.push({ page: p.id, y0: Math.round(cuts[i]), y1: Math.round(cuts[i + 1]) });
+      if (cuts[i + 1] - cuts[i] <= 8) continue;
+      const line = { page: p.id, y0: Math.round(cuts[i]), y1: Math.round(cuts[i + 1]) };
+      const skew = Math.round(skewAt(p, (line.y0 + line.y1) / 2) * 1000) / 1000;
+      if (skew) line.skew = skew;
+      lines.push(line);
     }
   }
   return lines;
@@ -344,7 +481,6 @@ export async function lineJpeg(scan, k) {
   await loadPages(scan);
   const img = await pagePicture(page.id);
   if (!img) return null;
-  const sx = img.naturalWidth / page.w;            // pictures are kept at page.w
   const h = Math.max(1, line.y1 - line.y0);
   const out = Math.min(1, MAX_READ_W / Math.max(page.w, h));
   const c = document.createElement('canvas');
@@ -353,7 +489,11 @@ export async function lineJpeg(scan, k) {
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, c.width, c.height);
-  ctx.drawImage(img, 0, line.y0 * sx, img.naturalWidth, h * sx, 0, 0, c.width, c.height);
+  // The page drawn so that the line lies level along the top of the canvas:
+  // sheared by the line's slant about the middle of the page
+  const sk = line.skew || 0;
+  ctx.setTransform(out, -sk * out, 0, out, 0, (sk * page.w / 2 - line.y0) * out);
+  ctx.drawImage(img, 0, 0, page.w, page.h);
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 
@@ -369,8 +509,10 @@ export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', of
   const h = Math.max(1, line.y1 - line.y0);
   const url = pageUrl(page.id);
   const top = (-line.y0 / h * 100).toFixed(3);
+  // A line written on a slant is drawn level: the page sheared about its middle
+  const level = line.skew ? `;transform:skewY(${(-Math.atan(line.skew) * 180 / Math.PI).toFixed(3)}deg)` : '';
   const pic = url
-    ? `<img src="${esc(url)}" alt="" draggable="false" style="top:${top}%">`
+    ? `<img src="${esc(url)}" alt="" draggable="false" style="top:${top}%${level}">`
     : `<span class="scan-missing">The scan is on the device that added it</span>`;
   return `<div class="scan-strip${zoomed ? ' zoomed' : ''}" data-scan-line="${k}">
     <div class="scan-view"><div class="scan-frame" style="aspect-ratio:${page.w} / ${h}">${pic}</div></div>
@@ -407,7 +549,7 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
         <span class="cutter-title"></span>
         <button type="button" class="header-btn accent" data-done>Use</button>
       </div>
-      <p class="cutter-hint">Each band is one line of the score: its neumes and its words. Drag an orange line to move it, tap its handle to remove it, tap the page to add one.</p>
+      <p class="cutter-hint">Each band is one line of the score: its neumes and its words. Drag an orange line to move it, tap its handle to remove it, tap the page to add one.${pages.some(p => p.url) ? ' <button type="button" class="cutter-again" data-again>Find the lines again</button>' : ''}</p>
       <div class="cutter-pages"></div>`;
     const wrap = sheet.querySelector('.cutter-pages');
 
@@ -416,12 +558,13 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
       let n = 0;
       wrap.innerHTML = state.map((p, pi) => {
         const bands = [];
+        const tilt = (y) => { const s = skewAt(p, y); return s ? `;transform:skewY(${(Math.atan(s) * 180 / Math.PI).toFixed(3)}deg)` : ''; };
         for (let i = 0; i + 1 < p.cuts.length; i++) {
           const a = p.cuts[i] / p.h * 100;
           const b = p.cuts[i + 1] / p.h * 100;
-          bands.push(`<div class="cut-band${n % 2 ? ' odd' : ''}" style="top:${a}%;height:${b - a}%"><span>${++n}</span></div>`);
+          bands.push(`<div class="cut-band${n % 2 ? ' odd' : ''}" style="top:${a}%;height:${b - a}%${tilt((p.cuts[i] + p.cuts[i + 1]) / 2)}"><span>${++n}</span></div>`);
         }
-        const lines = p.cuts.map((y, ci) => `<div class="cut" data-page="${pi}" data-cut="${ci}" style="top:${y / p.h * 100}%">
+        const lines = p.cuts.map((y, ci) => `<div class="cut" data-page="${pi}" data-cut="${ci}" style="top:${y / p.h * 100}%${tilt(y)}">
             <button type="button" class="cut-handle" aria-label="Cut ${ci + 1}: drag to move, tap to remove"></button></div>`).join('');
         return `<div class="cutter-page" data-page="${pi}" style="aspect-ratio:${p.w} / ${p.h}">
           ${p.url ? `<img src="${esc(p.url)}" alt="Page ${pi + 1}" draggable="false">` : '<span class="scan-missing">Page not on this device</span>'}
@@ -438,13 +581,17 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
       const pi = +pageEl.dataset.page;
       const rect = pageEl.getBoundingClientRect();
       const yOf = (cy) => Math.max(0, Math.min(state[pi].h, (cy - rect.top) / rect.height * state[pi].h));
+      // A cut is kept as where it crosses the middle of the page: a touch
+      // off to one side of a slanted cut is that much above or below it
+      const xOff = (cx) => (cx - rect.left) / rect.width * state[pi].w - state[pi].w / 2;
       if (handle) {
         e.preventDefault();
         const cutEl = handle.closest('.cut');
-        drag = { pi, ci: +cutEl.dataset.cut, el: cutEl, y0: e.clientY, moved: false, yOf };
+        const ci = +cutEl.dataset.cut;
+        drag = { pi, ci, el: cutEl, y0: e.clientY, moved: false, yOf, grab: state[pi].cuts[ci] - yOf(e.clientY) };
         handle.setPointerCapture?.(e.pointerId);
       } else {
-        drag = { pi, add: true, y0: e.clientY, x0: e.clientX, yOf };
+        drag = { pi, add: true, y0: e.clientY, x0: e.clientX, yOf, xOff };
       }
     });
     wrap.addEventListener('pointermove', (e) => {
@@ -456,7 +603,7 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
       if (Math.abs(e.clientY - drag.y0) > 4) drag.moved = true;
       if (!drag.moved) return;
       e.preventDefault();
-      const y = drag.yOf(e.clientY);
+      const y = Math.max(0, Math.min(state[drag.pi].h, drag.yOf(e.clientY) + drag.grab));
       state[drag.pi].cuts[drag.ci] = y;
       drag.el.style.top = `${y / state[drag.pi].h * 100}%`;
     });
@@ -467,7 +614,8 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
       const p = state[d.pi];
       if (d.add) {
         if (e.type === 'pointercancel') return;
-        p.cuts.push(Math.round(d.yOf(e.clientY)));
+        const y = d.yOf(e.clientY);
+        p.cuts.push(Math.round(Math.max(0, Math.min(p.h, y - skewAt(p, y) * d.xOff(e.clientX)))));
       } else if (!d.moved) {
         if (p.cuts.length > 2) p.cuts.splice(d.ci, 1);
       }
@@ -484,6 +632,16 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
     };
     const onKey = (e) => { if (e.key === 'Escape') close(null); };
     document.addEventListener('keydown', onKey);
+    // Find the lines again from the pictures (the cuts made by hand go)
+    sheet.querySelector('[data-again]')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      for (const p of state) {
+        const found = await findAgain(p);
+        if (found) Object.assign(p, found);
+      }
+      e.target.disabled = false;
+      draw();
+    });
     sheet.querySelector('[data-cancel]').addEventListener('click', () => close(null));
     sheet.querySelector('[data-done]').addEventListener('click', () => close(state));
 

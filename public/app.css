@@ -1396,6 +1396,7 @@ body.view-missing .view-cta p { display: none; }
 .scan-frame img {
   position: absolute;
   left: 0;
+  transform-origin: 50% 0;
   width: 100%;
   height: auto;
   display: block;
@@ -1482,6 +1483,17 @@ body.view-missing .view-cta p { display: none; }
   font: 13px/1.35 var(--sans);
   color: var(--text2);
 }
+.cutter-again {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent2);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cutter-again:disabled { opacity: 0.5; }
 .cutter-pages {
   flex: 1;
   overflow-y: auto;

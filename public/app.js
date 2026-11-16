@@ -2299,7 +2299,7 @@ function applyScan(pages) {
   const oldPages = score.scan?.pages || [];
   const oldLines = score.scan?.lines || [];
   lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; if (oldLines[k]?.read) l.read = oldLines[k].read; });
-  score.scan = { pages: pages.map(({ id, w, h, musicTop }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}) })), lines };
+  score.scan = { pages: pages.map(({ id, w, h, musicTop, skew }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}), ...(skew?.length ? { skew } : {}) })), lines };
   // The lines above the music (title, tone): no notes, nothing to read
   const head = headingLines(lines, pages);
   lines.forEach((l, k) => { if (k < head) l.heading = true; });
