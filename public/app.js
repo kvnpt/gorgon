@@ -635,6 +635,9 @@ function render() {
   // Insert point at start
   if (!viewOnly) html += insertPointHtml(0);
 
+  // Martyriae read from a scan that the notes before them do not reach
+  martyriaOff = viewOnly ? { at: new Set(), lines: new Map() } : scanChecks();
+
   // Pairs of notes one neume can write, unless their mark was dismissed
   const pairs = viewOnly ? [] : focusPairs();
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
@@ -659,7 +662,7 @@ function render() {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
     } else if (isScanLine(el)) {
       // Transcription mode: the line of the scan, above the notes written for it
-      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line) });
+      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
       else continue;      // hidden: no second insert point beside the last one
     }
 
@@ -801,9 +804,12 @@ function lyricSpanHtml(lyric) {
 function martyriaColHtml(el, idx, analysis) {
   const isSelected = idx === selectedIdx;
   const pending = el === placeholderEl ? ' placeholder' : '';
-  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}${pending}`;
+  // Tinted while Claude was unsure of it, or while the notes before it do
+  // not reach the note the scan gives it
+  const check = !viewOnly && (el.unsure || martyriaOff.at.has(idx)) ? ' unsure' : '';
+  const cls = `note-col martyria-col${isSelected ? ' selected' : ''}${pending}${check}`;
   const chars = martyriaChars(analysis);
-  const title = esc(`Martyria ${analysis?.noteName || ''}${el.auto === false ? '' : ' (auto)'}`);
+  const title = esc(`Martyria ${analysis?.noteName || ''}${el.scan ? ' (from the scan)' : el.auto === false ? '' : ' (auto)'}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
     <span class="martyria">${chars ? chars.note + chars.root : '?'}</span>
     <span class="lyric">&nbsp;</span>
@@ -812,7 +818,7 @@ function martyriaColHtml(el, idx, analysis) {
 
 function restColHtml(el, idx) {
   const isSelected = idx === selectedIdx;
-  const cls = `note-col rest-col${isSelected ? ' selected' : ''}`;
+  const cls = `note-col rest-col${isSelected ? ' selected' : ''}${el.unsure && !viewOnly ? ' unsure' : ''}`;
   const title = esc(`Leimma · ${restLabel(el)}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
     <span class="neume">${glyphChar(el.glyph)}</span>
@@ -872,6 +878,10 @@ function bindScoreEvents() {
       e.stopPropagation();
       readLines([k]);
     });
+    strip.querySelector('[data-scan-checked]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      markChecked(k);
+    });
     strip.querySelector('.scan-tools')?.addEventListener('click', (e) => e.stopPropagation());
   });
 
@@ -917,8 +927,10 @@ function tapNote(idx) {
     return;
   }
   // Leaving a blank spot drops its untouched placeholder
+  let dropped = false;
   if (score.elements[idx] !== placeholderEl) {
     const target = score.elements[idx];
+    dropped = placeholderIndex() >= 0;
     dropPlaceholder();
     idx = score.elements.indexOf(target);
   }
@@ -927,6 +939,7 @@ function tapNote(idx) {
   } else {
     selectedIdx = idx;
     cursorPos = idx + 1;
+    if (dropped) reanalyze();     // the symbols moved up one: pitches follow
     render();
   }
 }
@@ -970,10 +983,12 @@ function insertElement(el) {
 
 // Cursor movement shared by the arrow keys and the Prev/Next buttons
 function moveLeft() {
+  const dropped = placeholderIndex() >= 0;
   dropPlaceholder();
   stepLeft();
   // The start of a line of the scan is not a symbol: step over it
   while (selectedIdx >= 0 && isScanLine(score.elements[selectedIdx])) stepLeft();
+  if (dropped) reanalyze();       // the symbols after it moved up one
   render();
   scrollSelectionIntoView();
 }
@@ -1711,6 +1726,14 @@ function commitAndAdvance() {
   } else {
     const committed = score.elements[selectedIdx];
     if (committed.unsure) { pushHistory(); delete committed.unsure; }   // checked
+    if (committed.scan && martyriaOff.at.has(selectedIdx)) {
+      // A martyria the notes do not reach, passed with Next: it stands as
+      // the scan has it and sets the pitch, with no more said about it
+      pushHistory();
+      committed.auto = false;
+      committed.noteValue = analysisResult[selectedIdx].noteValue;
+      delete committed.scan;
+    }
     if (committed === placeholderEl) {
       pushHistory();          // committing the pending symbol is an edit
       keepPlaceholder();
@@ -2372,27 +2395,89 @@ function lineEmpty(k) {
 
 const readable = (k) => !score.scan?.lines?.[k]?.heading && lineEmpty(k);
 
-// The per-line button: offered on an empty line of music once reading is on
+// The per-line button: Read on an empty line of music once reading is on;
+// Checked on a line Claude wrote, until it is tapped
 function readOffer(k) {
   if (readingLines.has(k)) return 'busy';
+  if (score.scan?.lines?.[k]?.by === 'claude' && !lineEmpty(k)) return 'check';
   return readState?.ready && readable(k) ? 'offer' : '';
+}
+
+// A martyria is the scribe's own check of the melody: the notes before it
+// must arrive on the note it names. One read from a scan keeps that note
+// (el.scan), and the analysis says when the notes reach another (off). Here:
+// which martyriae to tint, and what to say on their line of the scan. Not
+// said across a line still empty, where the notes have not been written.
+let martyriaOff = { at: new Set(), lines: new Map() };
+const NOTE_SAID = ['Pa', 'Vou', 'Ga', 'Di', 'Ke', 'Zo', 'Ni'];
+const noteSaid = (v) => NOTE_SAID[((v % 7) + 7) % 7];
+
+function scanChecks() {
+  const at = new Set();
+  const lines = new Map();
+  let line = -1;
+  let written = 0;
+  let gap = false;
+  score.elements.forEach((el, i) => {
+    if (isScanLine(el)) {
+      if (line >= 0 && !written && !score.scan?.lines?.[line]?.heading) gap = true;
+      line = el.line;
+      written = 0;
+      return;
+    }
+    if (el === placeholderEl) return;
+    written++;
+    if (el.type !== 'martyria') return;
+    const a = analysisResult[i];
+    if (el.scan && a?.off && !gap) {
+      at.add(i);
+      if (!lines.has(line)) lines.set(line, `Notes reach ${noteSaid(a.reached)}, martyria says ${noteSaid(a.noteValue)}`);
+    }
+    if (el.scan || el.auto === false) gap = false;
+  });
+  return { at, lines };
+}
+
+// The line is right now: its tints go, and it becomes an example of this
+// scribe's hand for the lines read after it
+function markChecked(k) {
+  const r = lineRange(k);
+  const line = score.scan?.lines?.[k];
+  if (!r || !line) return;
+  pushHistory();
+  for (const el of score.elements.slice(r[0], r[1])) delete el.unsure;
+  line.by = 'checked';
+  haptic();
+  refresh();
+  const more = score.scan.lines.some((_, j) => readable(j));
+  toast(more ? `Line ${k + 1} checked. Claude follows it on the lines it reads next.` : `Line ${k + 1} checked.`);
 }
 
 // A written element as the reader's symbols (examples), and back
 function symbolOf(el) {
-  if (el.type === 'martyria') return { kind: 'martyria', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
-  if (el.type === 'rest') return { kind: 'rest', neume: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  if (el.type === 'martyria') {
+    const v = analysisResult[score.elements.indexOf(el)]?.noteValue;
+    const note = typeof v === 'number' ? noteSaid(v).toLowerCase() : '';
+    return { kind: 'martyria', neume: '', note, time: '', gorgon: '', quality: '', lyric: '', unsure: false };
+  }
+  if (el.type === 'rest') return { kind: 'rest', neume: '', note: '', time: '', gorgon: '', quality: '', lyric: '', unsure: false };
   return {
-    kind: 'note', neume: el.quantitativeNeume, time: el.timeNeume || '', gorgon: el.gorgonNeume || '',
+    kind: 'note', neume: el.quantitativeNeume, note: '', time: el.timeNeume || '', gorgon: el.gorgonNeume || '',
     quality: el.vocalExpression || '', lyric: el.lyric || '', unsure: false,
   };
 }
 
 const READ_TIMES = ['klasmaAbove', 'klasmaBelow', 'apli', 'dipli', 'tripli', 'tetrapli'];
 const READ_GORGONS = ['gorgonAbove', 'gorgonBelow', 'digorgon', 'trigorgon'];
+const READ_NOTES = ['ni', 'pa', 'vou', 'ga', 'di', 'ke', 'zo'];
 function elementOf(sym) {
-  if (sym.kind === 'martyria') return createMartyria();
-  if (sym.kind === 'rest') return createRest('leimma1');
+  if (sym.kind === 'martyria' || sym.kind === 'rest') {
+    const el = sym.kind === 'rest' ? createRest('leimma1') : createMartyria();
+    // The note the scan's martyria names: kept, to check the notes by
+    if (sym.kind === 'martyria' && READ_NOTES.includes(sym.note)) el.scan = sym.note;
+    if (sym.unsure) el.unsure = true;
+    return el;
+  }
   if (theory.neumeValues?.neumeValues?.[sym.neume] === undefined) return null;
   const el = createNote(sym.neume, String(sym.lyric || '').slice(0, 40));
   if (READ_TIMES.includes(sym.time)) el.timeNeume = sym.time;
@@ -2403,17 +2488,17 @@ function elementOf(sym) {
   return el;
 }
 
-// Up to two lines of this score written by hand, nearest first
+// Up to two lines of this score written by hand, or read by Claude and
+// then checked, nearest first
 async function readExamples(k) {
   const lines = score.scan.lines;
   const order = lines.map((_, j) => j).filter(j => j !== k).sort((a, b) => Math.abs(a - k) - Math.abs(b - k));
   const out = [];
   for (const j of order) {
     if (out.length >= 2) break;
-    if (lines[j].heading || lines[j].by === 'claude') continue;
+    if (!exampleLine(j)) continue;
     const r = lineRange(j);
-    const els = r ? score.elements.slice(r[0], r[1]).filter(el => el !== placeholderEl && ['note', 'martyria', 'rest'].includes(el.type)) : [];
-    if (els.length < 3) continue;
+    const els = score.elements.slice(r[0], r[1]).filter(el => el !== placeholderEl && ['note', 'martyria', 'rest'].includes(el.type));
     const image = await lineJpeg(score.scan, j);
     if (image) out.push({ image, symbols: els.map(symbolOf) });
   }
@@ -2432,13 +2517,27 @@ function insertRead(k, els) {
   score.scan.lines[k].by = 'claude';
 }
 
+// Whether a line could serve as an example (as readExamples chooses them)
+function exampleLine(j) {
+  const line = score.scan.lines[j];
+  if (line.heading || line.by === 'claude') return false;
+  const r = lineRange(j);
+  return !!r && score.elements.slice(r[0], r[1]).filter(el => el !== placeholderEl && ['note', 'martyria', 'rest'].includes(el.type)).length >= 3;
+}
+
 async function readLines(ks) {
   if (readingScore) return toast('Already reading. One moment.');
   const st = await readStatus(true);
   if (!st.signedIn) return toast(st.off ? 'Reading by Claude is not available here.' : 'Sign in to have Claude read the lines.');
   if (!st.ready) return toast('Reading by Claude is not switched on for this site yet.');
-  const todo = ks.filter(readable);
+  let todo = ks.filter(readable);
   if (!todo.length) return toast('No empty lines to read.');
+  // The first line of a score nobody has written a line of yet is read on
+  // its own: checked, it shows Claude this scribe's hand for all the rest,
+  // rather than the same slip being made on every line
+  const lines = score.scan.lines;
+  const first = todo.length > 1 && !lines.some(l => l.by === 'claude') && !lines.some((_, j) => exampleLine(j));
+  if (first) todo = todo.slice(0, 1);
   readingScore = score;
   let done = 0;
   try {
@@ -2474,9 +2573,11 @@ async function readLines(ks) {
     readingLines.clear();
     if (score.scan) { reanalyze(); render(); }
   }
-  if (done) {
+  if (done && first) {
+    toast(`Read line ${todo[0] + 1} first. Set it right and tap Checked: Claude then follows your corrections on the other lines.`, 9000);
+  } else if (done) {
     const unsure = score.elements.filter(el => el.unsure).length;
-    toast(`Read ${done} line${done === 1 ? '' : 's'}.${unsure ? ` ${unsure} note${unsure === 1 ? '' : 's'} to check (tinted); Next on a note marks it checked.` : ''}`);
+    toast(`Read ${done} line${done === 1 ? '' : 's'}.${unsure ? ` ${unsure} to check (tinted); Next on a note marks it checked.` : ''}`);
   }
 }
 
@@ -2547,7 +2648,7 @@ function readSheetHtml() {
   if (!st.ready) return '<div class="sheet-label">Read with Claude</div><p class="share-note">Not switched on for this site yet.</p>';
   const n = score.scan.lines.filter((_, k) => readable(k)).length;
   return `<div class="sheet-label">Read with Claude</div>
-    <p class="share-note">Claude writes the notes of each empty line; the ones it is unsure of are tinted until you check them. ${st.used} of ${st.cap} lines read this month.</p>
+    <p class="share-note">Claude writes the notes of each empty line; the ones it is unsure of are tinted until you check them. Tap Checked on a line once it is right, and Claude follows it on the lines it reads next. ${st.used} of ${st.cap} lines read this month.</p>
     <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-readall ${n ? '' : 'disabled'}>${n ? `Read ${n} empty line${n === 1 ? '' : 's'}` : 'No empty lines'}</button></div>`;
 }
 
@@ -2608,12 +2709,12 @@ function newScore() {
 }
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, ms = 5000) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 
 function saveToLocal() {

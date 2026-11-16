@@ -181,6 +181,18 @@ function computeBeatDuration(element, timeDurations) {
 // Main analysis function
 // ---------------------------------------------------------------------------
 
+// The notes by scale position (Pa = 0), as a scan's martyria names them
+const SCAN_NOTES = { pa: 0, vou: 1, ga: 2, di: 3, ke: 4, zo: 5, ni: 6 };
+
+function nearestOfClass(value, position) {
+  let d = (((position - value) % 7) + 7) % 7;      // 0..6 steps up
+  if (d > 3) d -= 7;                               // or up to 3 down
+  let v = value + d;
+  while (v > 11) v -= 7;
+  while (v < -9) v += 7;
+  return v;
+}
+
 /**
  * Analyze a Byzantine chant score, computing musical state at each position.
  *
@@ -281,6 +293,14 @@ export function analyzeScore(elements, modeKey, theory) {
         // piece) testifies a pitch and sets it; an auto one reads it.
         if (element.auto === false && typeof element.noteValue === 'number') {
           currentNoteValue = element.noteValue;
+        } else if (SCAN_NOTES[element.scan] !== undefined) {
+          // A martyria read from a scan names its note (no octave): it sets
+          // the pitch to that note nearest the one the notes reached, and
+          // says so when the two differ (a step before it is wrong)
+          const said = nearestOfClass(currentNoteValue, SCAN_NOTES[element.scan]);
+          entry.reached = currentNoteValue;
+          entry.off = said !== currentNoteValue;
+          currentNoteValue = said;
         }
         entry.noteValue = currentNoteValue;
         entry.noteName = noteValueToName(currentNoteValue, valueToNameMap);

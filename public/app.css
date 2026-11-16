@@ -1577,5 +1577,7 @@ body.view-missing .view-cta p { display: none; }
   -webkit-tap-highlight-color: transparent;
 }
 .scan-read:active { background: var(--accent); color: var(--on-accent); }
+/* The notes do not reach the note the line's martyria names */
+.scan-off { margin-left: 0.4rem; color: var(--warn); font-weight: 600; }
 .scan-reading { font: 600 12px/1 var(--sans); color: var(--accent2); animation: blink 1.2s step-end infinite; }
 @media print { .note-col.unsure { background: none; box-shadow: none; } }
