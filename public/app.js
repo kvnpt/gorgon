@@ -3007,6 +3007,8 @@ async function initView() {
   document.getElementById('btn-smaller').addEventListener('click', () => { zi = Math.max(0, zi - 1); applyZoom(); });
   document.getElementById('btn-larger').addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); applyZoom(); });
   applyZoom();
+  // The same PDF the editor makes: the print sheet, always light
+  document.getElementById('btn-view-pdf').addEventListener('click', () => window.print());
 
   const [got] = await Promise.all([SHARED_TOKEN ? fetchShared(SHARED_TOKEN) : null, loadData()]);
   if (!got) {
@@ -3015,7 +3017,7 @@ async function initView() {
     fitTitle();
     document.getElementById('score-mode').hidden = true;
     for (const a of document.querySelectorAll('#btn-copy, #btn-copy-foot')) { a.href = '/'; a.textContent = 'Open Gorgon'; }
-    for (const b of document.querySelectorAll('.size-btn')) b.hidden = true;
+    for (const b of document.querySelectorAll('.size-btn, #btn-view-pdf')) b.hidden = true;
     body.innerHTML = '<p class="view-missing-note">This score isn\'t shared any more, or the link is mistyped. Ask whoever sent it for a new link.</p>';
     document.title = 'Gorgon — Byzantine chant';
     return;
