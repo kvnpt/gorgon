@@ -501,7 +501,7 @@ export async function lineJpeg(scan, k) {
 // One line of the scan, as drawn above its notes
 // ---------------------------------------------------------------------------
 
-export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', off = '' } = {}) {
+export function stripHtml(scan, k, { zoomed = false, read = '', off = '' } = {}) {
   const line = scan?.lines?.[k];
   if (!line) return '';
   const page = scan.pages.find(p => p.id === line.page);
@@ -521,8 +521,7 @@ export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', of
       ${read === 'offer' ? `<button type="button" class="scan-read" data-scan-read title="Have Claude write this line's notes, for you to check">Read</button>` : ''}
       ${read === 'busy' ? '<span class="scan-reading">Reading…</span>' : ''}
       ${read === 'check' ? `<button type="button" class="scan-read" data-scan-checked title="This line is right now: clear its tints, and have Claude follow it on the lines it reads next">Checked</button>` : ''}
-      ${shift ? `<button type="button" class="scan-shift" data-scan-shift="-1" title="Start this line one note earlier" aria-label="Start line ${k + 1} one note earlier">‹</button>
-      <button type="button" class="scan-shift" data-scan-shift="1" title="Start this line one note later" aria-label="Start line ${k + 1} one note later">›</button>` : ''}
+      <button type="button" class="scan-more" data-scan-options title="The scan: read all, adjust the lines, add pages" aria-label="Scan options">⋯</button>
     </div>
   </div>`;
 }

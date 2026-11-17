@@ -661,9 +661,11 @@ function render() {
     } else if (el.type === 'modeKey') {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
     } else if (isScanLine(el)) {
-      // Transcription mode: the line of the scan, above the notes written for it
-      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
-      else continue;      // hidden: no second insert point beside the last one
+      // Transcription mode: the line of the scan, above the notes written for it,
+      // and after the notes of the line before, the cover its arrows move
+      if (!showScan()) continue;      // hidden: no second insert point beside the last one
+      html += coverHtml(i);
+      html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
     }
 
     if (!viewOnly) html += insertPointHtml(i + 1);
@@ -693,6 +695,7 @@ function render() {
 
   scoreEl.innerHTML = html;
   if (viewOnly) return;
+  markScanButton();
   bindScoreEvents();
   // The scan's pictures come from this browser's store, after the first draw
   if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
@@ -870,10 +873,10 @@ function bindScoreEvents() {
       if (zoomedLines.has(k)) zoomedLines.delete(k); else zoomedLines.add(k);
       strip.classList.toggle('zoomed', zoomedLines.has(k));
     });
-    strip.querySelectorAll('.scan-shift').forEach(btn => btn.addEventListener('click', (e) => {
+    strip.querySelector('[data-scan-options]')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (shiftScanLine(k, parseInt(btn.dataset.scanShift))) { haptic(); refresh(); }
-    }));
+      openScanSheet();
+    });
     strip.querySelector('[data-scan-read]')?.addEventListener('click', (e) => {
       e.stopPropagation();
       readLines([k]);
@@ -883,6 +886,29 @@ function bindScoreEvents() {
       markChecked(k);
     });
     strip.querySelector('.scan-tools')?.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  // The cover after a line's notes: its arrows move one note across, and the
+  // page holds still under them (the moved note is selected, beside them)
+  scoreEl.querySelectorAll('.scan-cover').forEach(cover => {
+    const k = parseInt(cover.dataset.cover);
+    cover.querySelectorAll('[data-scan-shift]').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const area = document.getElementById('score-area');
+      const before = cover.getBoundingClientRect().top;
+      if (!shiftScanLine(k, parseInt(btn.dataset.scanShift))) return;
+      haptic();
+      reanalyze();
+      render();
+      const now = scoreEl.querySelector(`.scan-cover[data-cover="${k}"]`);
+      if (now) area.scrollTop += now.getBoundingClientRect().top - before;
+    }));
+    // The rest of the cover: write on after the line's last note
+    cover.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ip = cover.previousElementSibling;
+      if (ip?.classList.contains('insert-point')) ip.click();
+    });
   });
 
   scoreEl.querySelectorAll('.note-col[data-idx]').forEach(col => {
@@ -2288,6 +2314,17 @@ function setScanHidden(hidden) {
   refresh();
 }
 
+// The Scan button is lit while a scan shows above the notes
+function markScanButton() {
+  const btn = document.getElementById('btn-scan');
+  if (!btn) return;
+  const on = showScan();
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', hasScan() ? String(on) : 'false');
+  btn.title = !hasScan() ? 'Transcribe from a scan: show a photo or PDF of a score line by line above your notes'
+    : on ? 'Hide the scan, for more room' : 'Show the scan above the notes';
+}
+
 // Lay new cuts over the score. Lines already placed keep their places (only
 // their part of the page changes); lines added go after the last notes and
 // lines taken away go. On a score without a scan the lines are spread over
@@ -2337,10 +2374,9 @@ function applyScan(pages) {
 }
 
 // Move where line k starts by one symbol: back takes the last symbol of the
-// line before into it, on gives its first symbol to the line before
+// line before into it, on gives its first symbol to the line before. The
+// symbol that moved is selected, so the page stays where the arrows are.
 function shiftScanLine(k, dir) {
-  const focus = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
-  const keepFocus = focus && focus !== placeholderEl ? focus : null;
   dropPlaceholder();
   const els = score.elements;
   const m = els.findIndex(el => isScanLine(el) && el.line === k);
@@ -2348,9 +2384,33 @@ function shiftScanLine(k, dir) {
   if (m < 0 || j < 0 || j >= els.length || isScanLine(els[j])) return false;
   pushHistory();
   [els[m], els[j]] = [els[j], els[m]];
-  if (keepFocus) focusSymbol(els.indexOf(keepFocus));
-  else focusEmptySlot(Math.min(cursorPos, els.length));
+  focusSymbol(m);      // where the symbol that crossed now stands
   return true;
+}
+
+// After the last notes of a line, before the next line of the scan: a cover
+// over the rest of the row, with the arrows that move its edge. › brings the
+// next line's first note onto this line, ‹ sends this line's last note on.
+// Not after a heading line with no notes.
+function coverHtml(i) {
+  const els = score.elements;
+  let p = i - 1;
+  while (p >= 0 && !isScanLine(els[p])) p--;
+  if (p < 0) return '';
+  const prev = score.scan?.lines?.[els[p].line];
+  const own = i - p - 1;                       // symbols of the line before
+  if (prev?.heading && !own) return '';
+  // A pending symbol is dropped before a move, so it does not count
+  const real = (j) => j >= 0 && j < els.length && els[j] === placeholderEl ? j + Math.sign(j - i) : j;
+  const b = real(i - 1);
+  const a = real(i + 1);
+  const back = b > p;
+  const on = a < els.length && !isScanLine(els[a]);
+  const k = els[i].line;
+  return `<div class="scan-cover" data-cover="${k}">
+    <button type="button" class="scan-shift" data-scan-shift="-1" ${back ? '' : 'disabled'} title="Send this line's last note to the next line" aria-label="Send the last note to line ${k + 1}">‹</button>
+    <button type="button" class="scan-shift" data-scan-shift="1" ${on ? '' : 'disabled'} title="Bring the next line's first note onto this line" aria-label="Bring the first note of line ${k + 1} back">›</button>
+  </div>`;
 }
 
 // ----------------------------------------------------------------------------
@@ -2620,6 +2680,13 @@ async function adjustScan() {
   if (done) applyScan(done);
 }
 
+function openScanSheet() {
+  const sheet = document.getElementById('scan-sheet');
+  renderScanSheet();
+  sheet.hidden = false;
+  readStatus(true).then(() => { if (!sheet.hidden) renderScanSheet(); render(); });
+}
+
 function renderScanSheet() {
   const sheet = document.getElementById('scan-sheet');
   const body = sheet.querySelector('.sheet-body');
@@ -2633,7 +2700,7 @@ function renderScanSheet() {
   const pages = score.scan.pages.length;
   body.innerHTML = `
     <div class="sheet-label">This score's scan</div>
-    <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it, and use its arrows if a line starts a note too early or late.</p>
+    <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it. The arrows after a line's last note move it on or back a note. Scan at the top shows and hides the scan.</p>
     ${readSheetHtml()}
     <div class="scan-sheet-row">
       <span>Show the scan</span>
@@ -2662,11 +2729,12 @@ function initScan() {
   const sheet = document.getElementById('scan-sheet');
   if (!btn || !sheet) return;
   const close = () => { sheet.hidden = true; };
+  // With a scan, the Scan button shows and hides it; its sheet opens from
+  // the ⋯ on each line of the scan
   btn.addEventListener('click', () => {
     if (!hasScan()) return importScan();
-    renderScanSheet();
-    sheet.hidden = false;
-    readStatus(true).then(() => { if (!sheet.hidden) renderScanSheet(); render(); });
+    setScanHidden(!scanHidden);
+    if (scanHidden) toast('Scan hidden. Tap Scan to show it again.', 3000);
   });
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet || e.target.closest('[data-close]')) return close();
