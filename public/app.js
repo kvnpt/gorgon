@@ -764,21 +764,29 @@ function combineMarkHtml(pair) {
 }
 
 // Signs hung on a neume (antikenoma, heteron…) take no width of their own
-// and can reach past it. Room on either side for the ink, in em.
+// and can reach past it, and some neumes stand tall (ypsili, kentimata
+// over an oligon). Room on either side and above for the ink, in em, so
+// nothing reaches into the next symbol or the words of the line above.
 const inkCache = new Map();
-function inkSidesStyle(run) {
+function inkSidesStyle(run, hasAbove = false) {
   if (!document.fonts?.check('32px Neanes')) return '';
-  if (!inkCache.has(run)) {
+  const key = run + (hasAbove ? '^' : '');
+  if (!inkCache.has(key)) {
     measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
     measureCtx.font = '32px Neanes';
     const m = measureCtx.measureText(run);
     const left = Math.max(0, m.actualBoundingBoxLeft) / 32;
     const right = Math.max(0, m.actualBoundingBoxRight - m.width) / 32;
+    // The box of a line-height 1 run reaches this far above the baseline
+    const boxTop = (m.fontBoundingBoxAscent - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent - 32) / 2) / 32;
+    const up = m.actualBoundingBoxAscent / 32 - boxTop;
     const em = (v) => (v > 0.02 ? `${(v + 0.05).toFixed(2)}em` : '0');
-    inkCache.set(run, left > 0.02 || right > 0.02
-      ? ` style="padding-left:${em(left)};padding-right:${em(right)}"` : '');
+    const css = [];
+    if (left > 0.02 || right > 0.02) css.push(`padding-left:${em(left)};padding-right:${em(right)}`);
+    if (up > (hasAbove ? 0.4 : 0.02)) css.push(`padding-top:${(up + 0.1).toFixed(2)}em`);
+    inkCache.set(key, css.length ? ` style="${css.join(';')}"` : '');
   }
-  return inkCache.get(run);
+  return inkCache.get(key);
 }
 
 function noteColHtml(el, idx, analysis, pair) {
@@ -803,7 +811,7 @@ function noteColHtml(el, idx, analysis, pair) {
   return `<div class="${cls}" data-idx="${idx}">
     ${pair ? combineMarkHtml(pair) : ''}
     ${aboveHtml}
-    <span class="neume${neumeClasses(el)}"${inkSidesStyle(char)}>${char}</span>
+    <span class="neume${neumeClasses(el)}"${inkSidesStyle(char, neumeClasses(el).includes('has-above'))}>${char}</span>
     ${belowHtml}
     ${lyricHtml}
   </div>`;
@@ -832,6 +840,24 @@ function lyricSpanHtml(lyric) {
 // last neume it is held over ("ning__", the line under the next neume).
 // Everything is worked out from the widths alone, not from where the lines
 // break, so the same layout holds when the page is printed.
+// Where a symbol's ink starts and ends, in px from the left of its box
+function glyphInk(g) {
+  if (!g) return [0, 0];
+  const w = g.offsetWidth;
+  const text = g.textContent.trim();
+  if (!text || !document.fonts?.check('32px Neanes')) return [0, w];
+  const cs = getComputedStyle(g);
+  const size = parseFloat(cs.fontSize) || 32;
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  measureCtx.font = '32px Neanes';
+  const m = measureCtx.measureText(text);
+  const k = size / 32;
+  // The text sits centred in the box, between its paddings
+  const pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+  const origin = pl + (w - pl - pr - m.width * k) / 2;
+  return [origin - m.actualBoundingBoxLeft * k, origin + m.actualBoundingBoxRight * k];
+}
+
 function layoutLyrics(root) {
   const content = root.querySelector('.score-content');
   if (!content) return;
@@ -864,12 +890,16 @@ function layoutLyrics(root) {
     }
     const lyr = child.querySelector(':scope > .lyric');
     const syl = lyr?.querySelector('.syl');
+    // A martyria stands down in the line of words: keep syllables off it too
+    const mart = child.querySelector(':scope > .martyria');
     const col = {
       el: child, lyr, syl, hyph: lyr?.querySelector('.hyph'),
       hold: !!lyr?.classList.contains('lyric-extender'),
       B: child.offsetWidth, P: 0,
       nw: (child.querySelector(':scope > .neume, :scope > .martyria')?.offsetWidth) || 0,
-      W: syl ? syl.offsetWidth : 0,
+      ink: glyphInk(child.querySelector(':scope > .neume, :scope > .martyria')),
+      W: syl ? syl.offsetWidth : mart ? mart.offsetWidth : 0,
+      mart: !!mart,
       left: x,
     };
     if (col.hold && last && last === prevText && !holdSince) {
@@ -878,7 +908,7 @@ function layoutLyrics(root) {
       const over = (last.W / 2 + s - last.B / 2) - last.P;
       if (over > 0) { last.P += over; x += over; col.left = x; }
     }
-    if (syl) {
+    if (syl || mart) {
       const textL = () => col.left + col.B / 2 - col.W / 2;
       if (prevText) {
         const need = prevText.hyph ? prevText.hyph.offsetWidth + 2 * s
@@ -892,6 +922,21 @@ function layoutLyrics(root) {
       holdSince = false;
     } else if (col.hold) {
       holdSince = true;
+    }
+    // A martyria stands as far from the neume after it as from the one
+    // before it, whatever the words needed
+    const before = cols[cols.length - 1], m = last;
+    if (m?.mart && cols.length >= 2 && cols[cols.length - 2] && before === m) {
+      const a = cols[cols.length - 2];
+      const inkL = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[0];
+      const inkR = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[1];
+      const gapBefore = inkL(m) - inkR(a);
+      const gapAfter = inkL(col) - inkR(m);
+      const d = Math.abs(gapBefore - gapAfter);
+      if (gapBefore > gapAfter) { m.P += d; }
+      else if (gapAfter > gapBefore) { a.P += d; m.left += d; if (m.right != null) m.right += d; }
+      col.left += d; x += d;
+      if (col.right != null) col.right += d;
     }
     cols.push(col);
     last = col;
@@ -940,7 +985,7 @@ function martyriaColHtml(el, idx, analysis) {
   const chars = martyriaChars(analysis);
   const title = esc(`Martyria ${analysis?.noteName || ''}${el.scan ? ' (from the scan)' : el.auto === false ? '' : ' (auto)'}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
-    <span class="martyria">${chars ? chars.note + chars.root : '?'}</span>
+    <span class="martyria"${chars ? inkSidesStyle(chars.note + chars.root).replace(/;?padding-top:[^;"]*/, '') : ''}>${chars ? chars.note + chars.root : '?'}</span>
     <span class="lyric">&nbsp;</span>
   </div>`;
 }
