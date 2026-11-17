@@ -1464,6 +1464,7 @@ body.keyboard-open .pad-nav { display: none; }
 .scan-frame img {
   position: absolute;
   left: 0;
+  transform-origin: 50% 0;
   width: 100%;
   height: auto;
   display: block;
@@ -1550,6 +1551,17 @@ body.keyboard-open .pad-nav { display: none; }
   font: 13px/1.35 var(--sans);
   color: var(--text2);
 }
+.cutter-again {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent2);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cutter-again:disabled { opacity: 0.5; }
 .cutter-pages {
   flex: 1;
   overflow-y: auto;
@@ -1645,6 +1657,8 @@ body.keyboard-open .pad-nav { display: none; }
   -webkit-tap-highlight-color: transparent;
 }
 .scan-read:active { background: var(--accent); color: var(--on-accent); }
+/* The notes do not reach the note the line's martyria names */
+.scan-off { margin-left: 0.4rem; color: var(--warn); font-weight: 600; }
 .scan-reading { font: 600 12px/1 var(--sans); color: var(--accent2); animation: blink 1.2s step-end infinite; }
 @media print { .note-col.unsure { background: none; box-shadow: none; } }
 
