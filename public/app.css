@@ -456,6 +456,8 @@ a.header-btn { text-decoration: none; }
 
 /* Reflowable score content — neumes flow like text */
 .score-content {
+  --col-pad: 0.15rem;     /* a column's side padding */
+  --ip-reach: 2px;        /* the insert point between two columns */
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -463,13 +465,16 @@ a.header-btn { text-decoration: none; }
   min-height: 3.5rem;
 }
 
-/* Individual note column (neume + lyric) */
+/* Individual note column (neume + lyric). Columns share out the room left
+   on a line, so lines are justified like the printed books; .line-fill
+   takes it all on a paragraph's last line */
 .note-col {
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
-  padding: 0.1rem 0.15rem;
+  padding: 0.1rem var(--col-pad);
   border-radius: 3px;
   min-width: 1.2rem;
   position: relative;
@@ -524,7 +529,11 @@ a.header-btn { text-decoration: none; }
   color: var(--neume-red);
 }
 
-/* Lyric text */
+.line-fill { flex: 1000 0 0; }
+
+/* Lyric text. The syllable is centred under the neume and may reach past
+   it; layoutLyrics (app.js) keeps syllables apart and places the hyphen
+   after one and the hold line (.ext) */
 .lyric {
   font-size: 0.85rem;
   color: var(--lyric-color);
@@ -532,18 +541,21 @@ a.header-btn { text-decoration: none; }
   min-height: 1.1rem;
   text-align: center;
   white-space: nowrap;
-}
-
-/* A held note: '-' inside a word, an extender line after the end of one */
-.lyric-held { color: var(--score-muted); }
-.lyric-extender {
+  position: relative;
   align-self: stretch;
-  display: flex;
-  align-items: flex-end;
 }
-.lyric-extender span {
-  flex: 1;
-  margin: 0 -0.2rem 0.3em;
+.lyric .syl {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.lyric .hyph {
+  position: absolute;
+  left: calc(50% + 0.6em);
+}
+.lyric .ext {
+  position: absolute;
+  bottom: 0.3em;
   border-bottom: 1px solid var(--lyric-color);
 }
 
@@ -590,7 +602,8 @@ a.header-btn { text-decoration: none; }
     background: var(--cursor-color);
     animation: blink 1s step-end infinite;
   }
-  .note-col { padding: 0.2rem 0.25rem; }
+  .score-content { --col-pad: 0.25rem; --ip-reach: 14px; }
+  .note-col { padding: 0.2rem var(--col-pad); }
   .lyric { min-height: 1.5rem; padding-top: 0.15rem; }
 }
 
@@ -982,6 +995,7 @@ body.keyboard-open #compose { display: none; }
     min-height: auto;
   }
   .insert-point, .note-col.cursor::after { display: none; }
+  .score-content { --ip-reach: 0px; }
   .analysis-bar { display: none; }
   .score-mode-label .chev { display: none; }
   .score-title, .score-mode-label, .score-subtitle { background: none !important; box-shadow: none !important; }
@@ -1293,6 +1307,7 @@ body.view-mode #lyric-bar { display: none !important; }
 body.view-mode #score-body { zoom: var(--view-zoom, 1); }
 body.view-mode .score { min-height: 0; }
 body.view-mode .note-col { cursor: default; }
+body.view-mode .score-content { --ip-reach: 0px; }
 body.view-mode .note-col:hover { background: none; }
 body.view-mode .score-title,
 body.view-mode .score-subtitle { pointer-events: none; }
@@ -1593,3 +1608,11 @@ body.view-missing .view-cta p { display: none; }
 .scan-off { margin-left: 0.4rem; color: var(--warn); font-weight: 600; }
 .scan-reading { font: 600 12px/1 var(--sans); color: var(--accent2); animation: blink 1.2s step-end infinite; }
 @media print { .note-col.unsure { background: none; box-shadow: none; } }
+
+/* A martyria stands lower than the neumes, as in the printed books: its
+   note letter level with the foot of the neumes, the root sign hanging
+   down into the line of words. It has no syllable of its own. */
+.score-content .martyria {
+  position: relative;
+  top: 0.42em;
+}
