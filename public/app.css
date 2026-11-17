@@ -1289,7 +1289,14 @@ body.view-mode #compose,
 body.view-mode #palette,
 body.view-mode #lyric-bar { display: none !important; }
 
-body.view-mode #score-body { zoom: var(--view-zoom, 1); }
+#score-body { zoom: var(--view-zoom, 1); }
+
+/* Editor's A− / A+, small, in the score's top-right corner; the title keeps
+   clear of them */
+.edit-size { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.3rem; z-index: 3; }
+.edit-size .size-btn { min-width: 34px; min-height: 30px; padding: 3px 7px; font-size: 13px; }
+body:not(.view-mode) .score-title { width: calc(100% - 9rem); }
+@media (max-width: 600px) { .edit-size { right: 0.4rem; top: 0.4rem; } }
 body.view-mode .score { min-height: 0; }
 body.view-mode .note-col { cursor: default; }
 body.view-mode .note-col:hover { background: none; }
@@ -1331,7 +1338,8 @@ body.view-missing .view-cta p { display: none; }
 
 @media print {
   .view-cta, body.view-mode .view-cta { display: none !important; }
-  body.view-mode #score-body { zoom: 1; }
+  #score-body { zoom: 1 !important; }
+  .edit-size { display: none !important; }
 }
 
 /* Qual. (top-right toggle, or a long press on the pad): the note being given

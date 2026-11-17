@@ -37,6 +37,11 @@
 
   <main id="score-area">
     <div id="score" class="score">
+      <!-- Editor: the score's size (shared pages have theirs in the header) -->
+      <div class="edit-size edit-only">
+        <button type="button" id="btn-edit-smaller" class="header-btn size-btn" title="Smaller" aria-label="Smaller notes">A<small>−</small></button>
+        <button type="button" id="btn-edit-larger" class="header-btn size-btn" title="Larger" aria-label="Larger notes">A<small>+</small></button>
+      </div>
       <!-- Title and mode live on the page itself, outside the re-rendered
            body so typing the title keeps the keyboard up -->
       <div id="score-head" class="score-head">
