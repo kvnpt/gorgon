@@ -179,6 +179,8 @@ body.vv-pinned {
 a.header-btn { text-decoration: none; }
 .header-btn[hidden] { display: none; }
 .header-btn.signed-in { border-color: var(--accent); color: var(--accent2); }
+/* Scan while its lines show above the notes */
+#btn-scan.on { border-color: var(--accent); color: var(--accent2); }
 
 /* Account sheet: the scores saved to a signed-in account (account.js) */
 .sheet {
@@ -1522,9 +1524,24 @@ body.keyboard-open .pad-nav { display: none; }
   letter-spacing: 0.06em;
   color: var(--text2);
 }
-.scan-shift {
+/* After a line's last note, a cover over the rest of its row: its arrows
+   move the edge a note at a time (› shows one more note, ‹ one fewer) */
+.scan-cover {
+  flex: 1000 0 5.6rem;     /* takes the rest of the row, like .line-fill */
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2.6rem;
+  margin-left: 0.2rem;
+  padding-left: 0.4rem;
+  border-left: 2px solid var(--accent);
+  background: repeating-linear-gradient(-45deg, var(--score-tint) 0 6px, transparent 6px 12px);
+  cursor: text;
+}
+.scan-shift, .scan-more {
   min-width: 40px;
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 0.6rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -1534,7 +1551,10 @@ body.keyboard-open .pad-nav { display: none; }
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.scan-shift:active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.scan-more { min-width: 36px; min-height: 28px; font-weight: 400; letter-spacing: 0.05em; }
+.scan-shift:active, .scan-more:active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.scan-shift:disabled { opacity: 0.35; cursor: default; }
+.scan-shift:disabled:active { background: var(--surface); color: var(--text2); border-color: var(--border); }
 /* A line of the scan with no notes yet (the heading, or a line still to
    write) keeps a short row: tap anywhere on it to start writing there */
 .scan-strip + .insert-point:has(+ .scan-strip) { flex: 0 0 100%; min-height: 1.6rem; }
@@ -1548,6 +1568,8 @@ body.keyboard-open .pad-nav { display: none; }
   border-bottom: 1px solid var(--line);
 }
 .scan-actions { gap: 0.5rem; flex-wrap: wrap; }
+.scan-src-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 0.5rem; }
+.scan-src-name small { color: var(--text3); }
 
 /* The cutter: the whole page, with its cuts, to check and set by hand */
 .cutter {
@@ -1663,7 +1685,7 @@ body.keyboard-open .pad-nav { display: none; }
 }
 
 @media print {
-  .scan-strip, .cutter { display: none !important; }
+  .scan-strip, .scan-cover, .cutter { display: none !important; }
 }
 
 /* Reading with Claude: a note it was unsure of, until checked with Next */

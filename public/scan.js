@@ -75,10 +75,82 @@ export async function loadPages(scan) {
   for (const p of scan?.pages || []) {
     if (urls.has(p.id)) continue;
     urls.set(p.id, null);
-    const blob = await getPage(p.id);
+    const blob = await getPage(p.id) || await fetchFile(p.id);
     if (blob) { urls.set(p.id, URL.createObjectURL(blob)); got = true; }
   }
   return got;
+}
+
+// ---------------------------------------------------------------------------
+// The account's copy (lib/files.js): signed in, the pictures and the file
+// they came from are sent once, so the account's other devices can fetch
+// them. Signed out, these find nothing and the pictures stay on this device.
+// ---------------------------------------------------------------------------
+
+const FILES = '/api/admin/files';
+const call = (path, opts = {}) => fetch(FILES + path, { cache: 'no-store', redirect: 'manual', credentials: 'same-origin', ...opts }).catch(() => null);
+
+/** A picture or file this device lacks, from the account (then kept here) */
+async function fetchFile(id) {
+  const res = await call('/' + encodeURIComponent(id), { cache: 'default' });
+  if (!res || !res.ok) return null;
+  const blob = await res.blob().catch(() => null);
+  if (blob?.size) await putPage(id, blob);
+  return blob?.size ? blob : null;
+}
+
+/** The scan's files: its pages and the files they came from */
+const filesOf = (scan) => [
+  ...(scan?.pages || []).map(p => ({ id: p.id, name: '' })),
+  ...(scan?.sources || []).map(s => ({ id: s.id, name: s.name || '' })),
+];
+
+const sent = new Set();     // ids the account has, as far as this page knows
+/**
+ * Send the account whichever of this scan's files it lacks and this device
+ * holds. Resolves { sent, missing } (missing: on neither), or null when not
+ * signed in.
+ */
+export async function sendFiles(scan) {
+  const want = filesOf(scan).filter(f => !sent.has(f.id));
+  if (!want.length) return { sent: 0, missing: 0 };
+  const res = await call('');
+  if (!res || !res.ok) return null;
+  const { files = [] } = await res.json().catch(() => ({}));
+  for (const f of files) sent.add(f.id);
+  let n = 0, missing = 0;
+  for (const f of want) {
+    if (sent.has(f.id)) continue;
+    const blob = await getPage(f.id);
+    if (!blob) { missing++; continue; }
+    const put = await call('/' + encodeURIComponent(f.id), {
+      method: 'PUT',
+      headers: { 'content-type': blob.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(f.name) },
+      body: blob,
+    });
+    if (!put) return { sent: n, missing, failed: true };
+    if (put.status === 401 || put.type === 'opaqueredirect') return null;
+    if (!put.ok) return { sent: n, missing, failed: true, full: put.status === 507 };
+    sent.add(f.id);
+    n++;
+  }
+  return { sent: n, missing };
+}
+
+/** Forget a page or file here and in the account (kept there while another score uses it) */
+export async function deleteFile(id, doc = '') {
+  await deletePage(id);
+  const u = urls.get(id);
+  if (u) URL.revokeObjectURL(u);
+  urls.delete(id);
+  sent.delete(id);
+  await call('/' + encodeURIComponent(id) + (doc ? '?doc=' + encodeURIComponent(doc) : ''), { method: 'DELETE' });
+}
+
+/** The file a scan came from, to save: { blob, name } or null */
+export async function sourceFile(src) {
+  const blob = await getPage(src.id) || await fetchFile(src.id);
+  return blob ? { blob, name: src.name || 'scan.pdf' } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,18 +219,23 @@ const toBlob = (c) => new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
 export async function importFiles(files) {
   const canvases = [];
   for (const f of files) {
-    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) canvases.push(...await pdfCanvases(f));
-    else canvases.push(await imageCanvas(f));
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      // A PDF is kept as it came, beside its pages' pictures (a photo's
+      // picture is the photo, near enough)
+      const src = { id: newId(), name: f.name || 'scan.pdf', size: f.size };
+      await putPage(src.id, f);
+      for (const c of await pdfCanvases(f)) canvases.push({ c, src });
+    } else canvases.push({ c: await imageCanvas(f) });
   }
   const pages = [];
-  for (const c of canvases) {
+  for (const { c, src } of canvases) {
     const id = newId();
     const blob = await toBlob(c);
     await putPage(id, blob);
     const url = URL.createObjectURL(blob);
     urls.set(id, url);
     const { cuts, skew } = detectLines(c);
-    pages.push({ id, w: c.width, h: c.height, url, cuts, skew, musicTop: musicTop(c, cuts, skew) });
+    pages.push({ id, w: c.width, h: c.height, url, cuts, skew, musicTop: musicTop(c, cuts, skew), ...(src ? { src } : {}) });
   }
   return pages;
 }
@@ -501,7 +578,7 @@ export async function lineJpeg(scan, k) {
 // One line of the scan, as drawn above its notes
 // ---------------------------------------------------------------------------
 
-export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', off = '' } = {}) {
+export function stripHtml(scan, k, { zoomed = false, read = '', off = '' } = {}) {
   const line = scan?.lines?.[k];
   if (!line) return '';
   const page = scan.pages.find(p => p.id === line.page);
@@ -513,7 +590,7 @@ export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', of
   const level = line.skew ? `;transform:skewY(${(-Math.atan(line.skew) * 180 / Math.PI).toFixed(3)}deg)` : '';
   const pic = url
     ? `<img src="${esc(url)}" alt="" draggable="false" style="top:${top}%${level}">`
-    : `<span class="scan-missing">The scan is on the device that added it</span>`;
+    : `<span class="scan-missing">This picture is on the device that added the scan. Open the score there once, signed in, to bring it here.</span>`;
   return `<div class="scan-strip${zoomed ? ' zoomed' : ''}" data-scan-line="${k}">
     <div class="scan-view"><div class="scan-frame" style="aspect-ratio:${page.w} / ${h}">${pic}</div></div>
     <div class="scan-tools">
@@ -521,8 +598,7 @@ export function stripHtml(scan, k, { shift = true, zoomed = false, read = '', of
       ${read === 'offer' ? `<button type="button" class="scan-read" data-scan-read title="Have Claude write this line's notes, for you to check">Read</button>` : ''}
       ${read === 'busy' ? '<span class="scan-reading">Reading…</span>' : ''}
       ${read === 'check' ? `<button type="button" class="scan-read" data-scan-checked title="This line is right now: clear its tints, and have Claude follow it on the lines it reads next">Checked</button>` : ''}
-      ${shift ? `<button type="button" class="scan-shift" data-scan-shift="-1" title="Start this line one note earlier" aria-label="Start line ${k + 1} one note earlier">‹</button>
-      <button type="button" class="scan-shift" data-scan-shift="1" title="Start this line one note later" aria-label="Start line ${k + 1} one note later">›</button>` : ''}
+      <button type="button" class="scan-more" data-scan-options title="The scan: read all, adjust the lines, add pages" aria-label="Scan options">⋯</button>
     </div>
   </div>`;
 }
