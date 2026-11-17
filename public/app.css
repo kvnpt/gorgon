@@ -1476,6 +1476,8 @@ body.view-missing .view-cta p { display: none; }
   border-bottom: 1px solid var(--line);
 }
 .scan-actions { gap: 0.5rem; flex-wrap: wrap; }
+.scan-src-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 0.5rem; }
+.scan-src-name small { color: var(--text3); }
 
 /* The cutter: the whole page, with its cuts, to check and set by hand */
 .cutter {

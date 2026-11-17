@@ -9,7 +9,7 @@ import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
 import { importFiles, openCutter, linesFromPages, cutsFromLines, headingLines,
-  stripHtml, loadPages, deletePage, pickFiles, lineJpeg } from './scan.js';
+  stripHtml, loadPages, deletePage, deleteFile, sendFiles, sourceFile, pickFiles, lineJpeg } from './scan.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -699,6 +699,7 @@ function render() {
   bindScoreEvents();
   // The scan's pictures come from this browser's store, after the first draw
   if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
+  if (hasScan()) keepInAccount();
   // Whether Claude can read lines here (for each empty line's Read button)
   if (showScan() && !readState && !readAsked) { readAsked = true; readStatus().then(st => { if (st.ready) render(); }); }
 
@@ -2325,6 +2326,24 @@ function markScanButton() {
     : on ? 'Hide the scan, for more room' : 'Show the scan above the notes';
 }
 
+// Signed in, the scan's pictures (and the PDF they came from) go to the
+// account once, so the account's other devices show them too (scan.js,
+// lib/files.js). Tried when a score with a scan opens, and after each change.
+const filesSentFor = new Set();
+const filesNote = new Map();   // score id -> what the Scan sheet says about where they are
+function keepInAccount(force = false) {
+  const id = score.metadata?.id;
+  if (!hasScan() || viewOnly || (!force && filesSentFor.has(id))) return;
+  filesSentFor.add(id);
+  const scan = score.scan;
+  sendFiles(scan).then(r => {
+    if (!r) { filesNote.set(id, 'local'); return; }
+    filesNote.set(id, r.failed ? (r.full ? 'full' : 'failed') : r.missing ? 'missing' : 'account');
+    if (r.failed) filesSentFor.delete(id);      // try again next time
+    if (r.full) toast('Your account has no room for more scans.');
+  });
+}
+
 // Lay new cuts over the score. Lines already placed keep their places (only
 // their part of the page changes); lines added go after the last notes and
 // lines taken away go. On a score without a scan the lines are spread over
@@ -2336,11 +2355,23 @@ function applyScan(pages) {
   const oldPages = score.scan?.pages || [];
   const oldLines = score.scan?.lines || [];
   lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; if (oldLines[k]?.read) l.read = oldLines[k].read; });
-  score.scan = { pages: pages.map(({ id, w, h, musicTop, skew }) => ({ id, w, h, ...(musicTop ? { musicTop } : {}), ...(skew?.length ? { skew } : {}) })), lines };
+  // The files the pages came from (a PDF): new ones arrive as objects, kept ones by id
+  const known = new Map([...(score.scan?.sources || []).map(x => [x.id, x]), ...pages.filter(p => p.src?.id).map(p => [p.src.id, p.src])]);
+  const srcOf = (p) => p.src?.id || p.src;
+  const used = new Set(pages.map(srcOf).filter(Boolean));
+  const sources = [...known.values()].filter(x => used.has(x.id)).map(({ id, name, size }) => ({ id, name, size }));
+  const oldSources = score.scan?.sources || [];
+  score.scan = {
+    pages: pages.map(p => ({ id: p.id, w: p.w, h: p.h, ...(p.musicTop ? { musicTop: p.musicTop } : {}), ...(p.skew?.length ? { skew: p.skew } : {}), ...(srcOf(p) ? { src: srcOf(p) } : {}) })),
+    lines,
+    ...(sources.length ? { sources } : {}),
+  };
   // The lines above the music (title, tone): no notes, nothing to read
   const head = headingLines(lines, pages);
   lines.forEach((l, k) => { if (k < head) l.heading = true; });
-  for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deletePage(p.id);
+  for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deleteFile(p.id, score.metadata?.id);
+  for (const x of oldSources) if (!used.has(x.id)) deleteFile(x.id, score.metadata?.id);
+  keepInAccount(true);
   zoomedLines.clear();
 
   const placed = score.elements.filter(isScanLine).length;
@@ -2649,7 +2680,7 @@ async function readLines(ks) {
 function removeScan() {
   dropPlaceholder();
   pushHistory();
-  for (const p of score.scan?.pages || []) deletePage(p.id);
+  for (const f of [...(score.scan?.pages || []), ...(score.scan?.sources || [])]) deleteFile(f.id, score.metadata?.id);
   delete score.scan;
   score.elements = score.elements.filter(el => !isScanLine(el));
   zoomedLines.clear();
@@ -2670,7 +2701,11 @@ async function importScan(add = false) {
   document.getElementById('toast').hidden = true;
   const before = add && hasScan() ? cutsFromLines(score.scan) : [];
   const done = await openCutter([...before, ...pages]);
-  if (!done) { for (const p of pages) deletePage(p.id); return; }
+  if (!done) {
+    for (const p of pages) deletePage(p.id);
+    for (const id of new Set(pages.map(p => p.src?.id).filter(Boolean))) deletePage(id);
+    return;
+  }
   applyScan(done);
 }
 
@@ -2702,6 +2737,7 @@ function renderScanSheet() {
     <div class="sheet-label">This score's scan</div>
     <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it. The arrows after a line's last note move it on or back a note. Scan at the top shows and hides the scan.</p>
     ${readSheetHtml()}
+    ${filesSheetHtml()}
     <div class="scan-sheet-row">
       <span>Show the scan</span>
       <button type="button" class="header-btn${scanHidden ? '' : ' accent'}" data-scan-toggle aria-pressed="${!scanHidden}">${scanHidden ? 'Off' : 'On'}</button>
@@ -2711,6 +2747,35 @@ function renderScanSheet() {
       <button type="button" class="header-btn" data-scan-more>Add pages</button>
       <button type="button" class="header-btn" data-scan-adjust>Adjust lines</button>
     </div>`;
+}
+
+// Where the pictures are, and the file they came from to download
+function filesSheetHtml() {
+  const said = {
+    account: 'Its pictures are kept in your account, so your other devices show them too.',
+    local: readState?.signedIn ? 'Its pictures are on this device.' : 'Its pictures are on this device only. Sign in, and they are kept in your account for your other devices.',
+    missing: 'Some of its pictures are not on this device or in your account yet: open this score, signed in, on the device that added the scan.',
+    failed: 'Its pictures could not be sent to your account just now; they will be tried again.',
+    full: 'Your account has no room for more scans, so these pictures are on this device only.',
+  }[filesNote.get(score.metadata?.id)] || '';
+  const src = score.scan.sources || [];
+  return `<div class="sheet-label">Pictures</div>
+    ${said ? `<p class="share-note">${said}</p>` : ''}
+    ${src.map((x, i) => `<div class="scan-sheet-row"><span class="scan-src-name">${esc(x.name || 'scan.pdf')}${x.size ? ` <small>${(x.size / 1048576).toFixed(1)} MB</small>` : ''}</span><button type="button" class="header-btn" data-scan-source="${i}">Download</button></div>`).join('')}`;
+}
+
+async function downloadSource(i) {
+  const src = score.scan?.sources?.[i];
+  if (!src) return;
+  const got = await sourceFile(src);
+  if (!got) { toast('That file is on the device that added the scan.'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(got.blob);
+  a.download = got.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
 }
 
 function readSheetHtml() {
@@ -2743,6 +2808,7 @@ function initScan() {
     else if (e.target.closest('[data-scan-adjust]')) { close(); adjustScan(); }
     else if (e.target.closest('[data-scan-readall]')) { close(); readLines(score.scan.lines.map((_, k) => k)); }
     else if (e.target.closest('[data-scan-toggle]')) { setScanHidden(!scanHidden); renderScanSheet(); }
+    else if (e.target.closest('[data-scan-source]')) downloadSource(parseInt(e.target.closest('[data-scan-source]').dataset.scanSource));
     else if (e.target.closest('[data-scan-remove]')) {
       if (!confirm('Remove the scan from this score? The notes stay.')) return;
       close();
