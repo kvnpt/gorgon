@@ -76,7 +76,7 @@
     --qual: #b48cff;
     --qual-soft: rgba(180, 140, 255, 0.16);
     --warn-soft: rgba(227, 184, 106, 0.14);
-    --score-bg: #272a32;
+    --score-bg: #20232a;   /* the page itself: no card around the score */
     --score-text: #f4f4f6;
     --score-muted: #a1a1aa;
     --score-faint: rgba(255, 255, 255, 0.12);
@@ -268,14 +268,15 @@ a.header-btn { text-decoration: none; }
 }
 .toast[hidden] { display: none; }
 
-/* Score Area */
+/* Score Area: the score sits straight on the page, no card around it, so the
+   notes get the whole width of the screen */
 #score-area {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* The page runs to the screen's edges: no frame, no gutter. Room at the
-     foot for the floating Back / Next */
-  padding: 0 env(safe-area-inset-right, 0px) 3.5rem env(safe-area-inset-left, 0px);
+  /* The page runs to the screen's edges; room at the foot for the
+     floating Back / Next */
+  padding: 0.5rem env(safe-area-inset-right, 0px) 3.5rem env(safe-area-inset-left, 0px);
   background: var(--score-bg);
   display: flex;
   justify-content: center;
@@ -288,7 +289,7 @@ a.header-btn { text-decoration: none; }
   width: 100%;
   max-width: 700px;
   min-height: 900px;
-  padding: 2rem 1.5rem;
+  padding: 1.5rem 1.5rem 2rem;
   position: relative;
 }
 
@@ -457,6 +458,8 @@ a.header-btn { text-decoration: none; }
 
 /* Reflowable score content — neumes flow like text */
 .score-content {
+  --col-pad: 0.15rem;     /* a column's side padding */
+  --ip-reach: 2px;        /* the insert point between two columns */
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -464,13 +467,16 @@ a.header-btn { text-decoration: none; }
   min-height: 3.5rem;
 }
 
-/* Individual note column (neume + lyric) */
+/* Individual note column (neume + lyric). Columns share out the room left
+   on a line, so lines are justified like the printed books; .line-fill
+   takes it all on a paragraph's last line */
 .note-col {
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
-  padding: 0.1rem 0.15rem;
+  padding: 0.1rem var(--col-pad);
   border-radius: 3px;
   min-width: 1.2rem;
   position: relative;
@@ -525,7 +531,11 @@ a.header-btn { text-decoration: none; }
   color: var(--neume-red);
 }
 
-/* Lyric text */
+.line-fill { flex: 1000 0 0; }
+
+/* Lyric text. The syllable is centred under the neume and may reach past
+   it; layoutLyrics (app.js) keeps syllables apart and places the hyphen
+   after one and the hold line (.ext) */
 .lyric {
   font-size: 0.85rem;
   color: var(--lyric-color);
@@ -533,18 +543,21 @@ a.header-btn { text-decoration: none; }
   min-height: 1.1rem;
   text-align: center;
   white-space: nowrap;
-}
-
-/* A held note: '-' inside a word, an extender line after the end of one */
-.lyric-held { color: var(--score-muted); }
-.lyric-extender {
+  position: relative;
   align-self: stretch;
-  display: flex;
-  align-items: flex-end;
 }
-.lyric-extender span {
-  flex: 1;
-  margin: 0 -0.2rem 0.3em;
+.lyric .syl {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.lyric .hyph {
+  position: absolute;
+  left: calc(50% + 0.6em);
+}
+.lyric .ext {
+  position: absolute;
+  bottom: 0.3em;
   border-bottom: 1px solid var(--lyric-color);
 }
 
@@ -591,7 +604,8 @@ a.header-btn { text-decoration: none; }
     background: var(--cursor-color);
     animation: blink 1s step-end infinite;
   }
-  .note-col { padding: 0.2rem 0.25rem; }
+  .score-content { --col-pad: 0.25rem; --ip-reach: 14px; }
+  .note-col { padding: 0.2rem var(--col-pad); }
   .lyric { min-height: 1.5rem; padding-top: 0.15rem; }
 }
 
@@ -983,6 +997,7 @@ body.keyboard-open #compose { display: none; }
     min-height: auto;
   }
   .insert-point, .note-col.cursor::after { display: none; }
+  .score-content { --ip-reach: 0px; }
   .analysis-bar { display: none; }
   .score-mode-label .chev { display: none; }
   .score-title, .score-mode-label, .score-subtitle { background: none !important; box-shadow: none !important; }
@@ -1001,7 +1016,7 @@ body.keyboard-open #compose { display: none; }
   /* Up to five pills (Scores, Share, Scan, New, PDF) beside the name */
   .edit-only.header-right { gap: 0.25rem; }
   .edit-only .header-btn { padding: 5px 8px; min-width: 40px; letter-spacing: 0; }
-  .score { padding: 1.2rem 1rem; }
+  .score { padding: 1rem 0.75rem 1.5rem; }
   .palette-grid { grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr)); }
 }
 
@@ -1291,9 +1306,17 @@ body.view-mode #compose,
 body.view-mode #palette,
 body.view-mode #lyric-bar { display: none !important; }
 
-body.view-mode #score-body { zoom: var(--view-zoom, 1); }
+#score-body { zoom: var(--view-zoom, 1); }
+
+/* Editor's A− / A+, small, in the score's top-right corner; the title keeps
+   clear of them */
+.edit-size { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.3rem; z-index: 3; }
+.edit-size .size-btn { min-width: 34px; min-height: 30px; padding: 3px 7px; font-size: 13px; }
+body:not(.view-mode) .score-title { width: calc(100% - 9rem); }
+@media (max-width: 600px) { .edit-size { right: 0.4rem; top: 0.4rem; } }
 body.view-mode .score { min-height: 0; }
 body.view-mode .note-col { cursor: default; }
+body.view-mode .score-content { --ip-reach: 0px; }
 body.view-mode .note-col:hover { background: none; }
 body.view-mode .score-title,
 body.view-mode .score-subtitle { pointer-events: none; }
@@ -1305,7 +1328,7 @@ body.view-mode .score-mode-label .chev { display: none; }
 body.view-mode #score-area { align-items: flex-start; padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)); overscroll-behavior: auto; }
 body.view-mode { overscroll-behavior: auto; }
 
-body.view-mode .size-btn[hidden] { display: none; }
+body.view-mode .header-btn[hidden] { display: none; }
 .size-btn { min-width: 40px; padding: 5px 10px; font-family: Georgia, serif; font-size: 15px; }
 .size-btn small { font-size: 11px; margin-left: 1px; }
 
@@ -1332,8 +1355,9 @@ body.view-missing .view-cta p { display: none; }
 }
 
 @media print {
-  .view-cta { display: none !important; }
-  body.view-mode #score-body { zoom: 1; }
+  .view-cta, body.view-mode .view-cta { display: none !important; }
+  #score-body { zoom: 1 !important; }
+  .edit-size { display: none !important; }
 }
 
 /* Qual. (top-right toggle, or a long press on the pad): the note being given
@@ -1666,3 +1690,11 @@ body.keyboard-open .pad-nav { display: none; }
 .pad-combine { min-height: 36px; padding: 0 0.6rem; font-size: 12px; gap: 0.25rem; }
 .pad-combine .combine-glyph { font-size: 1rem; }
 .pad-qual { padding: 0 0.65rem; }
+
+/* A martyria stands lower than the neumes, as in the printed books: its
+   note letter level with the foot of the neumes, the root sign hanging
+   down into the line of words. It has no syllable of its own. */
+.score-content .martyria {
+  position: relative;
+  top: 0.42em;
+}

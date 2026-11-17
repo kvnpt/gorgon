@@ -642,9 +642,22 @@ function render() {
   const pairs = viewOnly ? [] : focusPairs();
   const pairAt = new Map(pairs.map(p => [p.idx, p]));
 
+  // Lines are justified like a printed book: every symbol on a line takes
+  // an even share of the room left over. A paragraph's last line is not
+  // stretched (the filler takes the room), and a martyria ending a
+  // paragraph stands at the right margin (the filler goes before it).
+  let endMartyria = -1;     // where in html the martyria that ends things so far starts
+  const fill = () => {
+    const f = '<span class="line-fill" aria-hidden="true"></span>';
+    if (endMartyria >= 0) html = html.slice(0, endMartyria) + f + html.slice(endMartyria);
+    else html += f;
+    endMartyria = -1;
+  };
+
   for (let i = 0; i < score.elements.length; i++) {
     const el = score.elements[i];
     const analysis = analysisResult[i] || null;
+    if (el !== placeholderEl && !isScanLine(el) && el.type !== 'sectionBreak') endMartyria = el.type === 'martyria' ? html.length : -1;
 
     if (el.type === 'note') {
       html += noteColHtml(el, i, analysis, pairAt.get(i));
@@ -655,6 +668,7 @@ function render() {
     } else if (el.type === 'barline') {
       html += `<div class="barline" data-idx="${i}"></div>`;
     } else if (el.type === 'sectionBreak') {
+      fill();
       html += `<div class="section-break" data-idx="${i}"></div>`;
     } else if (el.type === 'spacer') {
       html += `<div class="spacer" data-idx="${i}"></div>`;
@@ -662,7 +676,7 @@ function render() {
       html += `<div class="mode-key-marker" data-idx="${i}" title="Mode key change"></div>`;
     } else if (isScanLine(el)) {
       // Transcription mode: the line of the scan, above the notes written for it
-      if (showScan()) html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
+      if (showScan()) fill(), html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
       else continue;      // hidden: no second insert point beside the last one
     }
 
@@ -675,6 +689,7 @@ function render() {
       html += `<div class="note-col lyric-only" aria-hidden="true"><span class="neume">&nbsp;</span>${lyricSpanHtml(l)}</div>`;
     }
   }
+  fill();
 
   html += '</div>'; // .score-content
 
@@ -692,6 +707,7 @@ function render() {
   }
 
   scoreEl.innerHTML = html;
+  layoutLyrics(scoreEl);
   if (viewOnly) return;
   bindScoreEvents();
   // The scan's pictures come from this browser's store, after the first draw
@@ -748,21 +764,29 @@ function combineMarkHtml(pair) {
 }
 
 // Signs hung on a neume (antikenoma, heteron…) take no width of their own
-// and can reach past it. Room on either side for the ink, in em.
+// and can reach past it, and some neumes stand tall (ypsili, kentimata
+// over an oligon). Room on either side and above for the ink, in em, so
+// nothing reaches into the next symbol or the words of the line above.
 const inkCache = new Map();
-function inkSidesStyle(run) {
+function inkSidesStyle(run, hasAbove = false) {
   if (!document.fonts?.check('32px Neanes')) return '';
-  if (!inkCache.has(run)) {
+  const key = run + (hasAbove ? '^' : '');
+  if (!inkCache.has(key)) {
     measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
     measureCtx.font = '32px Neanes';
     const m = measureCtx.measureText(run);
     const left = Math.max(0, m.actualBoundingBoxLeft) / 32;
     const right = Math.max(0, m.actualBoundingBoxRight - m.width) / 32;
+    // The box of a line-height 1 run reaches this far above the baseline
+    const boxTop = (m.fontBoundingBoxAscent - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent - 32) / 2) / 32;
+    const up = m.actualBoundingBoxAscent / 32 - boxTop;
     const em = (v) => (v > 0.02 ? `${(v + 0.05).toFixed(2)}em` : '0');
-    inkCache.set(run, left > 0.02 || right > 0.02
-      ? ` style="padding-left:${em(left)};padding-right:${em(right)}"` : '');
+    const css = [];
+    if (left > 0.02 || right > 0.02) css.push(`padding-left:${em(left)};padding-right:${em(right)}`);
+    if (up > (hasAbove ? 0.4 : 0.02)) css.push(`padding-top:${(up + 0.1).toFixed(2)}em`);
+    inkCache.set(key, css.length ? ` style="${css.join(';')}"` : '');
   }
-  return inkCache.get(run);
+  return inkCache.get(key);
 }
 
 function noteColHtml(el, idx, analysis, pair) {
@@ -787,7 +811,7 @@ function noteColHtml(el, idx, analysis, pair) {
   return `<div class="${cls}" data-idx="${idx}">
     ${pair ? combineMarkHtml(pair) : ''}
     ${aboveHtml}
-    <span class="neume${neumeClasses(el)}"${inkSidesStyle(char)}>${char}</span>
+    <span class="neume${neumeClasses(el)}"${inkSidesStyle(char, neumeClasses(el).includes('has-above'))}>${char}</span>
     ${belowHtml}
     ${lyricHtml}
   </div>`;
@@ -795,10 +819,160 @@ function noteColHtml(el, idx, analysis, pair) {
 
 // A held note shows the syllable going on: '-' inside a word, an extender
 // line after the end of one (see lyrics.js)
+// The syllable stands centred under its neume and may reach past it; the
+// hyphen after it and the hold line are placed by layoutLyrics
 function lyricSpanHtml(lyric) {
-  if (lyric === '_') return '<span class="lyric lyric-extender"><span></span></span>';
-  if (lyric === '-') return '<span class="lyric lyric-held">-</span>';
-  return `<span class="lyric">${esc(lyric) || '&nbsp;'}</span>`;
+  if (lyric === '_') return '<span class="lyric lyric-extender">&nbsp;</span>';
+  if (lyric === '-') return '<span class="lyric lyric-held">&nbsp;<span class="syl">-</span></span>';
+  if (!lyric) return '<span class="lyric">&nbsp;</span>';
+  const word = lyric.length > 1 && lyric.endsWith('-') ? lyric.slice(0, -1) : lyric;
+  const hyph = word !== lyric ? '<span class="hyph">-</span>' : '';
+  return `<span class="lyric">&nbsp;<span class="syl">${esc(word)}</span>${hyph}</span>`;
+}
+
+// Lay the words out as a printed book does (Kevin's reference: St Anthony's
+// Vespers). The neumes keep their own even spacing and the syllables are
+// centred under them, reaching past their neume where they are wider; only
+// where two syllables would come too close does the gap before the second
+// open up. The hyphen after a syllable stands between it and the next one
+// (close after it when the next note only carries the word on, "eve -  -"),
+// and a hold draws one line from the end of the syllable to the end of the
+// last neume it is held over ("ning__", the line under the next neume).
+// Everything is worked out from the widths alone, not from where the lines
+// break, so the same layout holds when the page is printed.
+// Where a symbol's ink starts and ends, in px from the left of its box
+function glyphInk(g) {
+  if (!g) return [0, 0];
+  const w = g.offsetWidth;
+  const text = g.textContent.trim();
+  if (!text || !document.fonts?.check('32px Neanes')) return [0, w];
+  const cs = getComputedStyle(g);
+  const size = parseFloat(cs.fontSize) || 32;
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  measureCtx.font = '32px Neanes';
+  const m = measureCtx.measureText(text);
+  const k = size / 32;
+  // The text sits centred in the box, between its paddings
+  const pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+  const origin = pl + (w - pl - pr - m.width * k) / 2;
+  return [origin - m.actualBoundingBoxLeft * k, origin + m.actualBoundingBoxRight * k];
+}
+
+function layoutLyrics(root) {
+  const content = root.querySelector('.score-content');
+  if (!content) return;
+  const cols = [];
+  for (const c of content.querySelectorAll(':scope > .note-col')) {
+    c.style.paddingRight = '';
+    c.querySelectorAll('.lyric > .ext').forEach(e => e.remove());
+  }
+  const ipEl = content.querySelector(':scope > .insert-point');
+  const ipw = ipEl ? ipEl.offsetWidth : 0;
+  const probe = content.querySelector('.lyric');
+  const fs = probe ? parseFloat(getComputedStyle(probe).fontSize) || 14 : 14;
+  const s = 0.25 * fs;            // from a syllable to its hyphen or hold line
+  const wordGap = 0.5 * fs;       // between two syllables of different words
+  const hyphCap = 0.7 * fs;       // a hyphen stands at most this far from its syllable
+  const minHold = 1.1 * fs;       // the shortest hold line worth drawing
+
+  let x = 0;
+  let prevText = null;            // the last syllable on this run of the line
+  let holdSince = false;          // a held note since that syllable
+  let last = null;                // the column before this one
+  for (const child of content.children) {
+    if (child.classList.contains('scan-strip') || child.classList.contains('section-break')) {
+      x = 0; prevText = null; holdSince = false; last = null;
+      continue;
+    }
+    if (!child.classList.contains('note-col')) {
+      x += child.classList.contains('insert-point') ? ipw : child.offsetWidth;
+      continue;
+    }
+    const lyr = child.querySelector(':scope > .lyric');
+    const syl = lyr?.querySelector('.syl');
+    // A martyria stands down in the line of words: keep syllables off it too
+    const mart = child.querySelector(':scope > .martyria');
+    const col = {
+      el: child, lyr, syl, hyph: lyr?.querySelector('.hyph'),
+      hold: !!lyr?.classList.contains('lyric-extender'),
+      B: child.offsetWidth, P: 0,
+      nw: (child.querySelector(':scope > .neume, :scope > .martyria')?.offsetWidth) || 0,
+      ink: glyphInk(child.querySelector(':scope > .neume, :scope > .martyria')),
+      W: syl ? syl.offsetWidth : mart ? mart.offsetWidth : 0,
+      mart: !!mart,
+      left: x,
+    };
+    if (col.hold && last && last === prevText && !holdSince) {
+      // The syllable before a hold ends inside its own column, so the line
+      // can go on from the column's edge however the gaps grow
+      const over = (last.W / 2 + s - last.B / 2) - last.P;
+      if (over > 0) { last.P += over; x += over; col.left = x; }
+    }
+    if (syl || mart) {
+      const textL = () => col.left + col.B / 2 - col.W / 2;
+      if (prevText) {
+        const need = prevText.hyph ? prevText.hyph.offsetWidth + 2 * s
+          : holdSince ? minHold + 2 * s : wordGap;
+        const short = need - (textL() - prevText.right);
+        if (short > 0 && last) { last.P += short; x += short; col.left = x; }
+        prevText.gapNext = textL() - prevText.right;
+      }
+      col.right = col.left + col.B / 2 + col.W / 2;
+      prevText = col;
+      holdSince = false;
+    } else if (col.hold) {
+      holdSince = true;
+    }
+    // A martyria stands as far from the neume after it as from the one
+    // before it, whatever the words needed
+    const before = cols[cols.length - 1], m = last;
+    if (m?.mart && cols.length >= 2 && cols[cols.length - 2] && before === m) {
+      const a = cols[cols.length - 2];
+      const inkL = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[0];
+      const inkR = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[1];
+      const gapBefore = inkL(m) - inkR(a);
+      const gapAfter = inkL(col) - inkR(m);
+      const d = Math.abs(gapBefore - gapAfter);
+      if (gapBefore > gapAfter) { m.P += d; }
+      else if (gapAfter > gapBefore) { a.P += d; m.left += d; if (m.right != null) m.right += d; }
+      col.left += d; x += d;
+      if (col.right != null) col.right += d;
+    }
+    cols.push(col);
+    last = col;
+    x = col.left + col.B;
+  }
+
+  // Lengths that follow the pointer (touch spacing) or print are left to
+  // CSS (--col-pad, --ip-reach), so they hold however the page is shown
+  const px = (v) => `${v.toFixed(1)}px`;
+  cols.forEach((col, k) => {
+    if (col.P) col.el.style.paddingRight = `calc(var(--col-pad) + ${px(col.P)})`;
+    if (col.hyph) {
+      const hw = col.hyph.offsetWidth;
+      const g = col.gapNext ?? Infinity;
+      const hx = Math.min(hyphCap, Math.max(s, (g - hw) / 2));
+      col.hyph.style.left = `calc(50% + ${(col.W / 2 + hx).toFixed(1)}px)`;
+    }
+    const next = cols[k + 1];
+    const rightEdge = `calc(-1 * var(--col-pad) - ${px(col.P)})`;
+    let from = null, to = null;
+    if (col.syl && next?.hold) {
+      from = `calc(50% + ${px(col.W / 2 + s)})`;
+      to = rightEdge;
+    } else if (col.hold) {
+      // From the column before (across the insert point between them)
+      from = 'calc(-1 * var(--col-pad) - var(--ip-reach))';
+      to = next?.hold ? rightEdge : `calc(50% - ${px(col.nw / 2)})`;
+    }
+    if (from !== null && col.lyr) {
+      const ext = document.createElement('span');
+      ext.className = 'ext';
+      ext.style.left = from;
+      ext.style.right = to;
+      col.lyr.appendChild(ext);
+    }
+  });
 }
 
 function martyriaColHtml(el, idx, analysis) {
@@ -811,7 +985,7 @@ function martyriaColHtml(el, idx, analysis) {
   const chars = martyriaChars(analysis);
   const title = esc(`Martyria ${analysis?.noteName || ''}${el.scan ? ' (from the scan)' : el.auto === false ? '' : ' (auto)'}`);
   return `<div class="${cls}" data-idx="${idx}" title="${title}">
-    <span class="martyria">${chars ? chars.note + chars.root : '?'}</span>
+    <span class="martyria"${chars ? inkSidesStyle(chars.note + chars.root).replace(/;?padding-top:[^;"]*/, '') : ''}>${chars ? chars.note + chars.root : '?'}</span>
     <span class="lyric">&nbsp;</span>
   </div>`;
 }
@@ -2924,6 +3098,7 @@ async function init() {
   renderPalette();
   initPaletteGrid();
   initToolbar();
+  initTextSize('btn-edit-smaller', 'btn-edit-larger', EDIT_ZOOM_KEY);
   initKeyboard();
   initComposePad();
   initLyricMode();
@@ -3110,6 +3285,30 @@ async function fetchShared(token) {
 const VIEW_ZOOMS = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
 const VIEW_ZOOM_KEY = 'gorgon-view-zoom';
 
+const EDIT_ZOOM_KEY = 'gorgon-edit-zoom';
+
+// A− / A+: the score's size (`zoom` on #score-body, --view-zoom), remembered
+// in this browser. The editor and shared pages keep sizes of their own, since
+// one writes up close and the other chants from a stand.
+function initTextSize(smallerId, largerId, key) {
+  const smaller = document.getElementById(smallerId);
+  const larger = document.getElementById(largerId);
+  let zi = VIEW_ZOOMS.indexOf(1);
+  try {
+    const saved = parseFloat(localStorage.getItem(key));
+    if (VIEW_ZOOMS.includes(saved)) zi = VIEW_ZOOMS.indexOf(saved);
+  } catch (e) { /* storage refused */ }
+  const apply = () => {
+    document.documentElement.style.setProperty('--view-zoom', VIEW_ZOOMS[zi]);
+    smaller.disabled = zi === 0;
+    larger.disabled = zi === VIEW_ZOOMS.length - 1;
+    try { localStorage.setItem(key, String(VIEW_ZOOMS[zi])); } catch (e) { /* storage refused */ }
+  };
+  smaller.addEventListener('click', () => { zi = Math.max(0, zi - 1); apply(); });
+  larger.addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); apply(); });
+  apply();
+}
+
 async function initView() {
   document.body.classList.add('view-mode');
   const title = document.getElementById('score-title');
@@ -3126,20 +3325,9 @@ async function initView() {
   }
 
   // Text size, kept for the next shared score this browser opens
-  let zi = VIEW_ZOOMS.indexOf(1);
-  try {
-    const saved = parseFloat(localStorage.getItem(VIEW_ZOOM_KEY));
-    if (VIEW_ZOOMS.includes(saved)) zi = VIEW_ZOOMS.indexOf(saved);
-  } catch (e) { /* storage refused */ }
-  const applyZoom = () => {
-    document.documentElement.style.setProperty('--view-zoom', VIEW_ZOOMS[zi]);
-    document.getElementById('btn-smaller').disabled = zi === 0;
-    document.getElementById('btn-larger').disabled = zi === VIEW_ZOOMS.length - 1;
-    try { localStorage.setItem(VIEW_ZOOM_KEY, String(VIEW_ZOOMS[zi])); } catch (e) { /* storage refused */ }
-  };
-  document.getElementById('btn-smaller').addEventListener('click', () => { zi = Math.max(0, zi - 1); applyZoom(); });
-  document.getElementById('btn-larger').addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); applyZoom(); });
-  applyZoom();
+  initTextSize('btn-smaller', 'btn-larger', VIEW_ZOOM_KEY);
+  // The same PDF the editor makes: the print sheet, always light
+  document.getElementById('btn-view-pdf').addEventListener('click', () => window.print());
 
   const [got] = await Promise.all([SHARED_TOKEN ? fetchShared(SHARED_TOKEN) : null, loadData()]);
   if (!got) {
@@ -3148,7 +3336,7 @@ async function initView() {
     fitTitle();
     document.getElementById('score-mode').hidden = true;
     for (const a of document.querySelectorAll('#btn-copy, #btn-copy-foot')) { a.href = '/'; a.textContent = 'Open Gorgon'; }
-    for (const b of document.querySelectorAll('.size-btn')) b.hidden = true;
+    for (const b of document.querySelectorAll('.size-btn, #btn-view-pdf')) b.hidden = true;
     body.innerHTML = '<p class="view-missing-note">This score isn\'t shared any more, or the link is mistyped. Ask whoever sent it for a new link.</p>';
     document.title = 'Gorgon — Byzantine chant';
     return;
@@ -3161,6 +3349,14 @@ async function initView() {
   render();
   fitTitle();
   if (document.fonts?.ready) document.fonts.ready.then(() => { inkCache.clear(); render(); });
+  // The words are spaced from measured widths: measure again when they change
+  let relayout = 0;
+  const layoutAgain = () => {
+    cancelAnimationFrame(relayout);
+    relayout = requestAnimationFrame(() => layoutLyrics(document.getElementById('score-body')));
+  };
+  window.addEventListener('resize', layoutAgain);
+  matchMedia('(pointer: coarse)').addEventListener?.('change', layoutAgain);
   keepAwake();
 }
 
