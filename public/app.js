@@ -2925,6 +2925,7 @@ async function init() {
   renderPalette();
   initPaletteGrid();
   initToolbar();
+  initTextSize('btn-edit-smaller', 'btn-edit-larger', EDIT_ZOOM_KEY);
   initKeyboard();
   initComposePad();
   initLyricMode();
@@ -3111,6 +3112,30 @@ async function fetchShared(token) {
 const VIEW_ZOOMS = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
 const VIEW_ZOOM_KEY = 'gorgon-view-zoom';
 
+const EDIT_ZOOM_KEY = 'gorgon-edit-zoom';
+
+// A− / A+: the score's size (`zoom` on #score-body, --view-zoom), remembered
+// in this browser. The editor and shared pages keep sizes of their own, since
+// one writes up close and the other chants from a stand.
+function initTextSize(smallerId, largerId, key) {
+  const smaller = document.getElementById(smallerId);
+  const larger = document.getElementById(largerId);
+  let zi = VIEW_ZOOMS.indexOf(1);
+  try {
+    const saved = parseFloat(localStorage.getItem(key));
+    if (VIEW_ZOOMS.includes(saved)) zi = VIEW_ZOOMS.indexOf(saved);
+  } catch (e) { /* storage refused */ }
+  const apply = () => {
+    document.documentElement.style.setProperty('--view-zoom', VIEW_ZOOMS[zi]);
+    smaller.disabled = zi === 0;
+    larger.disabled = zi === VIEW_ZOOMS.length - 1;
+    try { localStorage.setItem(key, String(VIEW_ZOOMS[zi])); } catch (e) { /* storage refused */ }
+  };
+  smaller.addEventListener('click', () => { zi = Math.max(0, zi - 1); apply(); });
+  larger.addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); apply(); });
+  apply();
+}
+
 async function initView() {
   document.body.classList.add('view-mode');
   const title = document.getElementById('score-title');
@@ -3127,20 +3152,9 @@ async function initView() {
   }
 
   // Text size, kept for the next shared score this browser opens
-  let zi = VIEW_ZOOMS.indexOf(1);
-  try {
-    const saved = parseFloat(localStorage.getItem(VIEW_ZOOM_KEY));
-    if (VIEW_ZOOMS.includes(saved)) zi = VIEW_ZOOMS.indexOf(saved);
-  } catch (e) { /* storage refused */ }
-  const applyZoom = () => {
-    document.documentElement.style.setProperty('--view-zoom', VIEW_ZOOMS[zi]);
-    document.getElementById('btn-smaller').disabled = zi === 0;
-    document.getElementById('btn-larger').disabled = zi === VIEW_ZOOMS.length - 1;
-    try { localStorage.setItem(VIEW_ZOOM_KEY, String(VIEW_ZOOMS[zi])); } catch (e) { /* storage refused */ }
-  };
-  document.getElementById('btn-smaller').addEventListener('click', () => { zi = Math.max(0, zi - 1); applyZoom(); });
-  document.getElementById('btn-larger').addEventListener('click', () => { zi = Math.min(VIEW_ZOOMS.length - 1, zi + 1); applyZoom(); });
-  applyZoom();
+  initTextSize('btn-smaller', 'btn-larger', VIEW_ZOOM_KEY);
+  // The same PDF the editor makes: the print sheet, always light
+  document.getElementById('btn-view-pdf').addEventListener('click', () => window.print());
 
   const [got] = await Promise.all([SHARED_TOKEN ? fetchShared(SHARED_TOKEN) : null, loadData()]);
   if (!got) {
@@ -3149,7 +3163,7 @@ async function initView() {
     fitTitle();
     document.getElementById('score-mode').hidden = true;
     for (const a of document.querySelectorAll('#btn-copy, #btn-copy-foot')) { a.href = '/'; a.textContent = 'Open Gorgon'; }
-    for (const b of document.querySelectorAll('.size-btn')) b.hidden = true;
+    for (const b of document.querySelectorAll('.size-btn, #btn-view-pdf')) b.hidden = true;
     body.innerHTML = '<p class="view-missing-note">This score isn\'t shared any more, or the link is mistyped. Ask whoever sent it for a new link.</p>';
     document.title = 'Gorgon — Byzantine chant';
     return;
