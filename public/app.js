@@ -872,8 +872,10 @@ function layoutLyrics(root) {
     c.style.paddingRight = '';
     c.querySelectorAll('.lyric > .ext').forEach(e => e.remove());
   }
-  const ipEl = content.querySelector(':scope > .insert-point');
-  const ipw = ipEl ? ipEl.offsetWidth : 0;
+  // The insert points between columns are not printed (nor on a share
+  // link), so the words are spaced as if they were not there: what fits
+  // on paper fits on the screen too
+  const ipw = 0;
   const probe = content.querySelector('.lyric');
   const fs = probe ? parseFloat(getComputedStyle(probe).fontSize) || 14 : 14;
   const s = 0.25 * fs;            // from a syllable to its hyphen or hold line
@@ -932,13 +934,17 @@ function layoutLyrics(root) {
     // A martyria stands as far from the neume after it as from the one
     // before it, whatever the words needed
     const before = cols[cols.length - 1], m = last;
-    if (m?.mart && cols.length >= 2 && cols[cols.length - 2] && before === m) {
+    // (not against the pending symbol or the words waiting at the end, which
+    // are not printed)
+    const shown = !child.classList.contains('placeholder') && !child.classList.contains('lyric-only');
+    if (shown && m?.mart && !m.el.classList.contains('placeholder') && cols.length >= 2 && before === m) {
       const a = cols[cols.length - 2];
       const inkL = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[0];
       const inkR = (c) => c.left + c.B / 2 - c.nw / 2 + c.ink[1];
       const gapBefore = inkL(m) - inkR(a);
       const gapAfter = inkL(col) - inkR(m);
-      const d = Math.abs(gapBefore - gapAfter);
+      // Kept small: a big difference means the two are not side by side
+      const d = Math.min(Math.abs(gapBefore - gapAfter), fs * 2);
       if (gapBefore > gapAfter) { m.P += d; }
       else if (gapAfter > gapBefore) { a.P += d; m.left += d; if (m.right != null) m.right += d; }
       col.left += d; x += d;
