@@ -710,8 +710,19 @@ function render() {
     html += `</div>`;
   }
 
+  // A zoomed line of the scan keeps where it was scrolled to across the redraw
+  const scanScroll = new Map();
+  scoreEl.querySelectorAll('.scan-strip.zoomed').forEach(strip => {
+    const view = strip.querySelector('.scan-view');
+    if (view?.scrollLeft) scanScroll.set(strip.dataset.scanLine, view.scrollLeft);
+  });
+
   scoreEl.innerHTML = html;
   layoutLyrics(scoreEl);
+  for (const [k, x] of scanScroll) {
+    const view = scoreEl.querySelector(`.scan-strip.zoomed[data-scan-line="${k}"] .scan-view`);
+    if (view) view.scrollLeft = x;
+  }
   if (viewOnly) return;
   markScanButton();
   bindScoreEvents();
@@ -3210,6 +3221,7 @@ function initViewport() {
   if (!vv) return;
   const root = document.documentElement;
   let raf = 0;
+  let lastH = 0;
 
   const update = () => {
     raf = 0;
@@ -3222,6 +3234,11 @@ function initViewport() {
     document.body.classList.toggle('keyboard-open', keyboardOpen);
     document.body.classList.toggle('vv-pinned', keyboardOpen);
     if (!keyboardOpen && window.scrollY !== 0) window.scrollTo(0, 0);
+    // The keyboard coming up shrinks the score from below, over the note
+    // whose words are being typed: bring that note back into view
+    const h = Math.round(vv.height);
+    if (h !== lastH && lyricMode && selectedIdx >= 0) scrollNoteIntoArea(selectedIdx);
+    lastH = h;
   };
   const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
 
