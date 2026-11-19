@@ -41,6 +41,10 @@ app.all('/api/admin/*', (req, res) => {
   res.status(503).json({ error: 'Sign-in is not set up', configured: false });
 });
 app.get('/admin', (req, res) => res.redirect('/'));
+// A PDF sent on WhatsApp comes through agora to the Worker only
+app.all('/api/wa/*', (req, res) => {
+  res.status(503).json({ error: 'WhatsApp is not set up here.' });
+});
 // Shared links read from the account's database, so here they find nothing
 app.get('/api/shared/*', (req, res) => {
   res.status(404).json({ error: 'This link is not shared, or no longer is.' });

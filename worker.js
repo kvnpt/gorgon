@@ -11,6 +11,10 @@ import neumeCombinations from './data/theory/neume-combinations.json';
 import martyriaRules from './data/theory/martyria-rules.json';
 import attractions from './data/theory/attractions.json';
 import { handleAccount, handleLogin, handleShared, readShared, readPreview } from './lib/documents.js';
+import { handleTicket } from './lib/whatsapp.js';
+
+// Agora's WhatsApp webhook hands scan PDFs over through this (service binding)
+export { GorgonWhatsApp } from './lib/whatsapp.js';
 
 const API = {
   '/api/glyphs': glyphs,
@@ -39,6 +43,9 @@ export default {
     // Behind Cloudflare Access (lib/access.js): sign-in and saved documents.
     if (pathname === '/admin') return handleLogin(request, env);
     if (pathname.startsWith('/api/admin/')) return handleAccount(request, env, pathname);
+
+    // A PDF sent on WhatsApp, waited for by a ticket (lib/whatsapp.js)
+    if (pathname.startsWith('/api/wa/ticket')) return handleTicket(request, env, pathname);
 
     // Shared scores: public, read only (lib/documents.js)
     if (pathname.startsWith('/api/shared/')) return handleShared(request, env, pathname);
