@@ -3228,25 +3228,45 @@ function openPasteBox(add) {
     if (e.target === sheet || e.target.closest('[data-close]')) close();
     else if (e.target.closest('[data-upload]')) { close(); importScan(add); }
   });
+  const fail = (what) => {
+    box.textContent = '';
+    msg.textContent = `Your phone didn’t hand the file to the page${what ? ` (it gave: ${what})` : ''}. Save the PDF to Files and use Upload instead.`;
+    msg.hidden = false;
+  };
+  let pasted = '';
   box.addEventListener('paste', (e) => {
-    e.preventDefault();
     e.stopPropagation();
     const dt = e.clipboardData;
     let files = [...(dt?.files || [])];
     if (!files.length) files = [...(dt?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
     files = files.filter(scanFile);
-    if (!files.length) {
-      const types = [...(dt?.types || [])].filter(t => t !== 'Files');
-      msg.textContent = types.length ? 'That was text, not a picture or PDF. Copy the file itself (in Files: press and hold it, then Copy), or use Upload.'
-        : 'Nothing came with that paste. Copy the PDF or picture again, or use Upload.';
-      msg.hidden = false;
+    if (files.length) {
+      e.preventDefault();
+      close();
+      importScan(add, files);
       return;
     }
-    close();
-    importScan(add, files);
+    // Nothing as a file: let the browser put in what it makes of it (iOS
+    // may turn a PDF or picture into an image in the box), then take that
+    pasted = [...(dt?.types || [])].join(', ');
+    setTimeout(harvest, 250);
   });
+  async function harvest() {
+    const el = box.querySelector('img, embed, object, attachment, video');
+    const src = el && (el.currentSrc || el.src || el.data || el.getAttribute('src'));
+    if (!src) return fail(pasted || (box.textContent.trim() ? 'text' : ''));
+    try {
+      const blob = await (await fetch(src)).blob();
+      const type = blob.type || 'image/png';
+      if (!type.startsWith('image/') && type !== 'application/pdf') return fail(type);
+      close();
+      importScan(add, [new File([blob], type === 'application/pdf' ? 'pasted.pdf' : `pasted.${type.split('/')[1]}`, { type })]);
+    } catch (err) {
+      console.warn('paste box', err);
+      fail(pasted || 'a picture it would not share');
+    }
+  }
   box.addEventListener('beforeinput', (e) => { if (e.inputType !== 'insertFromPaste') e.preventDefault(); });
-  box.addEventListener('input', () => { box.textContent = ''; });
   box.focus();
 }
 
