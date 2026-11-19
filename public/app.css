@@ -416,6 +416,39 @@ a.header-btn { text-decoration: none; }
 @keyframes pm-in { from { opacity: 0; transform: scale(.85); } }
 @media (prefers-reduced-motion: reduce) { .popmenu, .popmenu.out { animation: none; transition: none; } }
 
+/* The Scan menu: Upload, Paste (and, with a scan, show/hide) */
+.scan-menu { display: flex; flex-direction: column; gap: 2px; width: 220px; }
+.sm-head {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text2);
+  border-top: 1px solid var(--line);
+  margin-top: 3px;
+}
+.sm-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 48px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+.sm-item b { font-size: 15.5px; font-weight: 550; }
+.sm-item small { font-size: 12.5px; color: var(--text2); }
+.sm-item:hover, .sm-item:active { background: var(--line); }
+.sm-item:focus { outline: none; }
+.sm-item:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-mid); }
+
 /* The mode picker: authentic modes on the left, each beside its plagal */
 .mode-menu {
   display: grid;
