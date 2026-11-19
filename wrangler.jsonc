@@ -25,7 +25,10 @@
     // Transcription mode (lib/read.js): lines of a scan each account may have
     // Claude read per calendar month. The API key is the Worker secret
     // ANTHROPIC_API_KEY (`npx wrangler secret put ANTHROPIC_API_KEY`), never here.
-    "READ_LINES_PER_MONTH": "400"
+    "READ_LINES_PER_MONTH": "400",
+    // Agora's WhatsApp number (agora's wrangler.toml WHATSAPP_NUMBER): a scan's
+    // PDF can be sent there (lib/whatsapp.js). Empty turns that off.
+    "WHATSAPP_NUMBER": "15551549124"
   },
   // A zone route, not a custom domain: gorgon.orthodoxy.au already has a
   // proxied DNS record, and this more specific pattern takes precedence over

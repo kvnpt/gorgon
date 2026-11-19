@@ -3188,93 +3188,139 @@ async function clipboardFiles() {
 }
 
 async function pasteScan(add) {
-  // Safari hands a page only pictures and text through clipboard.read; a
-  // PDF (or a file copied in Files) comes only with a real paste, so then
-  // the paste box opens to take one
-  if (!navigator.clipboard?.read) return openPasteBox(add);
+  // Safari hands a page only pictures and text through clipboard.read, never
+  // a PDF; when no picture comes, a PDF can be sent on WhatsApp instead
+  if (!navigator.clipboard?.read) return askIfPdf(add);
   let files;
   try { files = await clipboardFiles(); } catch (e) {
     console.warn('scan paste', e);
     if (e?.name === 'NotAllowedError') return;   // the Paste bubble dismissed
-    return openPasteBox(add);
+    return askIfPdf(add);
   }
-  if (!files.length) return openPasteBox(add);
+  if (!files.length) return askIfPdf(add);
   importScan(add, files);
 }
 
 const scanFile = (f) => f && (f.type.startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
 
-// A box to paste into: a long press there gives the phone's own Paste,
-// which carries a PDF or any picture as a file
-function openPasteBox(add) {
-  document.getElementById('paste-sheet')?.remove();
+function scanSheet(id, label, body) {
+  document.getElementById(id)?.remove();
   const sheet = document.createElement('div');
-  sheet.id = 'paste-sheet';
+  sheet.id = id;
   sheet.className = 'sheet';
-  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-modal="true" aria-label="Paste a scan">
-      <div class="sheet-head"><span class="sheet-heading">Paste a scan</span>
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-modal="true" aria-label="${esc(label)}">
+      <div class="sheet-head"><span class="sheet-heading">${esc(label)}</span>
         <button type="button" class="header-btn" data-close>Cancel</button></div>
-      <div class="sheet-body">
-        <div class="paste-box" contenteditable="true" role="textbox" aria-label="Paste here" inputmode="none"></div>
-        <p class="share-note">Press and hold in the box, then tap Paste. A PDF or a picture copied from Files or Photos goes in here.</p>
-        <p class="share-note paste-msg" hidden></p>
-        <div class="sheet-actions"><button type="button" class="header-btn" data-upload>Upload instead</button></div>
-      </div></div>`;
+      <div class="sheet-body">${body}</div></div>`;
   document.body.appendChild(sheet);
-  const box = sheet.querySelector('.paste-box');
-  const msg = sheet.querySelector('.paste-msg');
-  const close = () => sheet.remove();
+  return sheet;
+}
+
+// No picture on the clipboard: a PDF, perhaps, which a phone can send on
+// WhatsApp (lib/whatsapp.js) or save to Files for Upload
+function askIfPdf(add) {
+  const sheet = scanSheet('pdf-ask-sheet', 'Nothing to paste', `
+    <p class="share-note">There's no picture on the clipboard. Is it a PDF? A phone won't paste a PDF into a web page, but you can send it to Gorgon on WhatsApp.</p>
+    <div class="sheet-actions wa-actions">
+      <button type="button" class="header-btn" data-upload>Upload instead</button>
+      <button type="button" class="header-btn accent" data-wa>Send the PDF on WhatsApp</button>
+    </div>`);
   sheet.addEventListener('click', (e) => {
-    if (e.target === sheet || e.target.closest('[data-close]')) close();
-    else if (e.target.closest('[data-upload]')) { close(); importScan(add); }
+    if (e.target === sheet || e.target.closest('[data-close]')) sheet.remove();
+    else if (e.target.closest('[data-upload]')) { sheet.remove(); importScan(add); }
+    else if (e.target.closest('[data-wa]')) { sheet.remove(); listenOnWhatsApp(add); }
   });
-  const fail = (what) => {
-    box.textContent = '';
-    msg.textContent = `Your phone didn’t hand the file to the page${what ? ` (it gave: ${what})` : ''}. Save the PDF to Files and use Upload instead.`;
-    msg.hidden = false;
+}
+
+const fmtNumber = (n) => n.length === 11 && n[0] === '1' ? `+1 (${n.slice(1, 4)}) ${n.slice(4, 7)}-${n.slice(7)}` : `+${n}`;
+
+// Waits a minute for the PDF to come to agora's WhatsApp number. Signed in
+// with a linked phone, forwarding it is enough; otherwise the code goes
+// first (the button opens WhatsApp with it written), or as the PDF's caption.
+// The code coming starts the minute again, for the trip back to the PDF.
+async function listenOnWhatsApp(add) {
+  const ask = (path) => fetch(path, { method: 'POST', cache: 'no-store', redirect: 'manual', credentials: 'same-origin' })
+    .catch(() => null);
+  let res = await ask('/api/admin/wa/ticket');
+  if (!res || !res.ok) res = await ask('/api/wa/ticket');
+  let t = null;
+  try { t = res?.ok ? await res.json() : await res?.json(); } catch { /* answered below */ }
+  if (!res?.ok || !t?.secret) { toast(t?.error || 'Sending on WhatsApp isn’t available right now. Use Upload.', 3500); return; }
+
+  const linkedNote = t.linked
+    ? `Your phone ${esc(t.linked)} is linked: just share the PDF to Gorgon’s WhatsApp chat.`
+    : t.signed_in ? 'If your phone is linked (in Agora, or here before), just share the PDF to the chat. Otherwise send the code first; that links it for next time.'
+      : '';
+  const sheet = scanSheet('wa-sheet', 'Send the PDF on WhatsApp', `
+    <ol class="wa-steps">
+      <li><b>Send the code.</b> <span class="wa-code">${esc(t.code.slice(0, 3))} ${esc(t.code.slice(3))}</span>
+        <a class="header-btn accent wa-open" href="${esc(t.url)}" target="_blank" rel="noopener">Open WhatsApp with the code</a></li>
+      <li><b>Share the PDF</b> to the same chat (${esc(fmtNumber(t.number))}). Its caption can carry the code instead.</li>
+      <li><b>Come back here.</b> It opens by itself.</li>
+    </ol>
+    ${linkedNote ? `<p class="share-note">${linkedNote}</p>` : ''}
+    <div class="wa-wait"><span class="wa-dot"></span><span class="wa-status">Waiting for the PDF…</span><span class="wa-left"></span></div>
+    <div class="sheet-actions"><button type="button" class="header-btn" data-upload>Upload instead</button></div>`);
+  const status = sheet.querySelector('.wa-status');
+  const left = sheet.querySelector('.wa-left');
+  let expires = t.expires_at;
+  let done = false;
+  const stop = () => { done = true; clearInterval(tick); sheet.remove(); };
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) stop();
+    else if (e.target.closest('[data-upload]')) { stop(); importScan(add); }
+  });
+  const ended = (text) => {
+    done = true;
+    clearInterval(tick);
+    sheet.querySelector('.wa-wait').classList.add('over');
+    status.textContent = text;
+    left.textContent = '';
+    const a = sheet.querySelector('.wa-open');
+    a.textContent = 'Try again';
+    a.removeAttribute('href');
+    a.addEventListener('click', (e) => { e.preventDefault(); stop(); listenOnWhatsApp(add); }, { once: true });
   };
-  let pasted = '';
-  box.addEventListener('paste', (e) => {
-    e.stopPropagation();
-    const dt = e.clipboardData;
-    let files = [...(dt?.files || [])];
-    if (!files.length) files = [...(dt?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
-    files = files.filter(scanFile);
-    if (files.length) {
-      e.preventDefault();
-      close();
-      importScan(add, files);
-      return;
-    }
-    // Nothing as a file: let the browser put in what it makes of it (iOS
-    // may turn a PDF or picture into an image in the box), then take that
-    pasted = [...(dt?.types || [])].join(', ');
-    setTimeout(harvest, 250);
-  });
-  async function harvest() {
-    const el = box.querySelector('img, embed, object, attachment, video');
-    const src = el && (el.currentSrc || el.src || el.data || el.getAttribute('src'));
-    if (!src) return fail(pasted || (box.textContent.trim() ? 'text' : ''));
+  let polling = false;
+  const poll = async () => {
+    if (done || polling) return;
+    polling = true;
     try {
-      const blob = await (await fetch(src)).blob();
-      const type = blob.type || 'image/png';
-      if (!type.startsWith('image/') && type !== 'application/pdf') return fail(type);
-      close();
-      importScan(add, [new File([blob], type === 'application/pdf' ? 'pasted.pdf' : `pasted.${type.split('/')[1]}`, { type })]);
-    } catch (err) {
-      console.warn('paste box', err);
-      fail(pasted || 'a picture it would not share');
-    }
-  }
-  box.addEventListener('beforeinput', (e) => { if (e.inputType !== 'insertFromPaste') e.preventDefault(); });
-  box.focus();
+      const r = await fetch(`/api/wa/ticket/${encodeURIComponent(t.secret)}`, { cache: 'no-store' });
+      const st = r.ok ? await r.json() : null;
+      if (!st || done) return;
+      if (st.expires_at) expires = st.expires_at;
+      if (st.state === 'code') status.textContent = 'Code received. Now share the PDF…';
+      if (st.state === 'expired') return ended('The minute ran out before the PDF came.');
+      if (st.state === 'arrived') {
+        status.textContent = `Got ${st.name || 'the PDF'}. Opening…`;
+        done = true;
+        clearInterval(tick);
+        const f = await fetch(`/api/wa/ticket/${encodeURIComponent(t.secret)}/file`, { cache: 'no-store' });
+        if (!f.ok) return ended('The PDF came but couldn’t be fetched. Try again.');
+        const blob = await f.blob();
+        sheet.remove();
+        importScan(add, [new File([blob], st.name || 'scan.pdf', { type: 'application/pdf' })]);
+      }
+    } catch { /* the next tick tries again */ } finally { polling = false; }
+  };
+  const tick = setInterval(() => {
+    const s = Math.max(0, Math.ceil((expires - Date.now()) / 1000));
+    left.textContent = `${s}s`;
+    poll();
+  }, 2000);
+  left.textContent = `${Math.ceil((expires - Date.now()) / 1000)}s`;
+  // Back from WhatsApp: look at once rather than at the next tick
+  const back = () => { if (document.visibilityState === 'visible') poll(); };
+  document.addEventListener('visibilitychange', back);
+  new MutationObserver((_, o) => { if (!sheet.isConnected) { document.removeEventListener('visibilitychange', back); o.disconnect(); } })
+    .observe(document.body, { childList: true });
 }
 
 // A picture pasted with the keyboard (⌘V) while nothing is being typed
 // goes in the same way
 document.addEventListener('paste', (e) => {
   if (viewOnly || e.target.closest?.('input, textarea, [contenteditable]')) return;
-  if (document.getElementById('paste-sheet')) return;
   const files = [...(e.clipboardData?.files || [])].filter(scanFile);
   if (!files.length) return;
   e.preventDefault();
