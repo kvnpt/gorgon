@@ -1765,3 +1765,19 @@ body.keyboard-open .pad-nav { display: none; }
   position: relative;
   top: 0.42em;
 }
+
+/* Print and PDF: none of the editor's marks on the page. The selection,
+   Qual.'s purple, warnings and tints are for the screen only. */
+@media print {
+  .note-col.selected,
+  .note-col.qual-preview,
+  .note-col.has-warning,
+  .note-col.unsure,
+  .note-col:hover {
+    background: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  .note-col.qual-preview .neume { color: var(--neume-color) !important; }
+  .note-col.cursor::after { display: none !important; }
+}
