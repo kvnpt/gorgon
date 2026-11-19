@@ -3188,26 +3188,74 @@ async function clipboardFiles() {
 }
 
 async function pasteScan(add) {
-  if (!navigator.clipboard?.read) {
-    toast('This browser can’t paste a picture here. Save it and use Upload.', 3500);
-    return;
-  }
+  // Safari hands a page only pictures and text through clipboard.read; a
+  // PDF (or a file copied in Files) comes only with a real paste, so then
+  // the paste box opens to take one
+  if (!navigator.clipboard?.read) return openPasteBox(add);
   let files;
   try { files = await clipboardFiles(); } catch (e) {
     console.warn('scan paste', e);
-    // Refused (the Paste bubble dismissed) or nothing readable
-    if (e?.name !== 'NotAllowedError') toast('Nothing to paste. Copy a picture of the score first.', 3000);
-    return;
+    if (e?.name === 'NotAllowedError') return;   // the Paste bubble dismissed
+    return openPasteBox(add);
   }
-  if (!files.length) { toast('No picture on the clipboard. Copy a picture of the score first.', 3000); return; }
+  if (!files.length) return openPasteBox(add);
   importScan(add, files);
+}
+
+const scanFile = (f) => f && (f.type.startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+
+// A box to paste into: a long press there gives the phone's own Paste,
+// which carries a PDF or any picture as a file
+function openPasteBox(add) {
+  document.getElementById('paste-sheet')?.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'paste-sheet';
+  sheet.className = 'sheet';
+  sheet.innerHTML = `<div class="sheet-card" role="dialog" aria-modal="true" aria-label="Paste a scan">
+      <div class="sheet-head"><span class="sheet-heading">Paste a scan</span>
+        <button type="button" class="header-btn" data-close>Cancel</button></div>
+      <div class="sheet-body">
+        <div class="paste-box" contenteditable="true" role="textbox" aria-label="Paste here" inputmode="none"></div>
+        <p class="share-note">Press and hold in the box, then tap Paste. A PDF or a picture copied from Files or Photos goes in here.</p>
+        <p class="share-note paste-msg" hidden></p>
+        <div class="sheet-actions"><button type="button" class="header-btn" data-upload>Upload instead</button></div>
+      </div></div>`;
+  document.body.appendChild(sheet);
+  const box = sheet.querySelector('.paste-box');
+  const msg = sheet.querySelector('.paste-msg');
+  const close = () => sheet.remove();
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet || e.target.closest('[data-close]')) close();
+    else if (e.target.closest('[data-upload]')) { close(); importScan(add); }
+  });
+  box.addEventListener('paste', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dt = e.clipboardData;
+    let files = [...(dt?.files || [])];
+    if (!files.length) files = [...(dt?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+    files = files.filter(scanFile);
+    if (!files.length) {
+      const types = [...(dt?.types || [])].filter(t => t !== 'Files');
+      msg.textContent = types.length ? 'That was text, not a picture or PDF. Copy the file itself (in Files: press and hold it, then Copy), or use Upload.'
+        : 'Nothing came with that paste. Copy the PDF or picture again, or use Upload.';
+      msg.hidden = false;
+      return;
+    }
+    close();
+    importScan(add, files);
+  });
+  box.addEventListener('beforeinput', (e) => { if (e.inputType !== 'insertFromPaste') e.preventDefault(); });
+  box.addEventListener('input', () => { box.textContent = ''; });
+  box.focus();
 }
 
 // A picture pasted with the keyboard (⌘V) while nothing is being typed
 // goes in the same way
 document.addEventListener('paste', (e) => {
   if (viewOnly || e.target.closest?.('input, textarea, [contenteditable]')) return;
-  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
+  if (document.getElementById('paste-sheet')) return;
+  const files = [...(e.clipboardData?.files || [])].filter(scanFile);
   if (!files.length) return;
   e.preventDefault();
   closeScanMenu();

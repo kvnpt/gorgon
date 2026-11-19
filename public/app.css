@@ -449,6 +449,20 @@ a.header-btn { text-decoration: none; }
 .sm-item:focus { outline: none; }
 .sm-item:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-mid); }
 
+.paste-box {
+  min-height: 120px;
+  margin-top: 0.4rem;
+  border: 2px dashed var(--hair);
+  border-radius: 14px;
+  background: var(--score-tint);
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: transparent;
+  outline: none;
+}
+.paste-box:focus { border-color: var(--accent-mid); }
+.paste-box:empty::before { content: 'Paste here'; display: block; padding: 46px 0; text-align: center; color: var(--text2); }
+
 /* The mode picker: authentic modes on the left, each beside its plagal */
 .mode-menu {
   display: grid;
