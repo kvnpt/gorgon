@@ -3003,8 +3003,8 @@ function removeScan() {
   refresh();
 }
 
-async function importScan(add = false) {
-  const files = await pickFiles();
+async function importScan(add = false, picked = null) {
+  const files = picked || await pickFiles();
   if (!files.length) return;
   toast('Reading the scan…');
   let pages;
@@ -3104,6 +3104,116 @@ function readSheetHtml() {
     <div class="sheet-actions"><button type="button" class="header-btn accent" data-scan-readall ${n ? '' : 'disabled'}>${n ? `Read ${n} empty line${n === 1 ? '' : 's'}` : 'No empty lines'}</button></div>`;
 }
 
+// The Scan button opens a small menu: Upload (the file picker) and Paste
+// (a picture copied on the phone, e.g. a screenshot or a photo from
+// Photos); with a scan, these add pages, and the menu also shows or hides it.
+let scanMenu = null;
+
+function openScanMenu(btn) {
+  closeScanMenu();
+  const add = hasScan();
+  const item = (act, label, sub) => `<button type="button" class="sm-item" role="menuitem" data-act="${act}">`
+    + `<b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  let html = '';
+  if (add) html += item('toggle', scanHidden ? 'Show the scan' : 'Hide the scan', scanHidden ? 'Above the notes' : 'For more room')
+    + `<div class="sm-head">Add pages</div>`;
+  html += item('upload', 'Upload', 'A photo or PDF')
+    + item('paste', 'Paste', 'A picture you copied');
+  const el = document.createElement('div');
+  el.className = 'popmenu scan-menu';
+  el.setAttribute('role', 'menu');
+  el.setAttribute('aria-label', 'Scan');
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  // Under the button, its right edge kept on the screen
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth;
+  const left = Math.max(10, Math.min(window.innerWidth - w - 10, r.left + r.width / 2 - w / 2));
+  el.style.left = `${left}px`;
+  el.style.top = `${r.bottom + 8}px`;
+  el.style.transformOrigin = `${Math.round(r.left + r.width / 2 - left)}px 0`;
+
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('.sm-item');
+    if (!b) return;
+    const act = b.dataset.act;
+    // Paste reads the clipboard in this same tap (Safari asks with its
+    // Paste bubble only inside one), before the menu goes
+    if (act === 'paste') pasteScan(add);
+    closeScanMenu();
+    if (act === 'upload') importScan(add);
+    else if (act === 'toggle') {
+      setScanHidden(!scanHidden);
+      if (scanHidden) toast('Scan hidden. Tap Scan to show it again.', 3000);
+    }
+  });
+  btn.setAttribute('aria-expanded', 'true');
+  scanMenu = el;
+  el.querySelector('.sm-item')?.focus({ preventScroll: true });
+}
+
+function closeScanMenu() {
+  if (!scanMenu) return;
+  const el = scanMenu;
+  scanMenu = null;
+  document.getElementById('btn-scan')?.setAttribute('aria-expanded', 'false');
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 130);
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (scanMenu && !scanMenu.contains(e.target) && !e.target.closest('#btn-scan')) closeScanMenu();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && scanMenu) { closeScanMenu(); document.getElementById('btn-scan')?.focus(); }
+});
+window.addEventListener('resize', () => closeScanMenu());
+
+const CLIP_TYPES = ['image/png', 'image/jpeg', 'image/heic', 'image/webp', 'image/gif', 'image/tiff', 'application/pdf'];
+
+// The pictures (or a PDF) on the clipboard, as files
+async function clipboardFiles() {
+  const items = await navigator.clipboard.read();
+  const files = [];
+  for (const it of items) {
+    const type = CLIP_TYPES.find(t => it.types.includes(t)) || it.types.find(t => t.startsWith('image/'));
+    if (!type) continue;
+    const blob = await it.getType(type);
+    const ext = type === 'application/pdf' ? 'pdf' : type.split('/')[1].replace('jpeg', 'jpg');
+    files.push(new File([blob], `pasted-${files.length + 1}.${ext}`, { type }));
+  }
+  return files;
+}
+
+async function pasteScan(add) {
+  if (!navigator.clipboard?.read) {
+    toast('This browser can’t paste a picture here. Save it and use Upload.', 3500);
+    return;
+  }
+  let files;
+  try { files = await clipboardFiles(); } catch (e) {
+    console.warn('scan paste', e);
+    // Refused (the Paste bubble dismissed) or nothing readable
+    if (e?.name !== 'NotAllowedError') toast('Nothing to paste. Copy a picture of the score first.', 3000);
+    return;
+  }
+  if (!files.length) { toast('No picture on the clipboard. Copy a picture of the score first.', 3000); return; }
+  importScan(add, files);
+}
+
+// A picture pasted with the keyboard (⌘V) while nothing is being typed
+// goes in the same way
+document.addEventListener('paste', (e) => {
+  if (viewOnly || e.target.closest?.('input, textarea, [contenteditable]')) return;
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
+  if (!files.length) return;
+  e.preventDefault();
+  closeScanMenu();
+  importScan(hasScan(), files);
+});
+
 function initScan() {
   const btn = document.getElementById('btn-scan');
   const sheet = document.getElementById('scan-sheet');
@@ -3111,11 +3221,7 @@ function initScan() {
   const close = () => { sheet.hidden = true; };
   // With a scan, the Scan button shows and hides it; its sheet opens from
   // the ⋯ on each line of the scan
-  btn.addEventListener('click', () => {
-    if (!hasScan()) return importScan();
-    setScanHidden(!scanHidden);
-    if (scanHidden) toast('Scan hidden. Tap Scan to show it again.', 3000);
-  });
+  btn.addEventListener('click', () => (scanMenu ? closeScanMenu() : openScanMenu(btn)));
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet || e.target.closest('[data-close]')) return close();
     if (e.target.closest('[data-scan-add]')) { close(); importScan(); }
