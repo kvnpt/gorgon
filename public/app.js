@@ -9,7 +9,8 @@ import { attachPad } from './gestures.js';
 import { initAccount, currentIsSaved, newDocId } from './account.js';
 import { parseLyricText, buildLyricText, slotAtCaret } from './lyrics.js';
 import { importFiles, openCutter, linesFromPages, cutsFromLines, headingLines,
-  stripHtml, loadPages, deletePage, deleteFile, sendFiles, sourceFile, pickFiles, lineJpeg } from './scan.js';
+  stripHtml, loadPages, deletePage, deleteFile, sendFiles, sourceFile, pickFiles, lineJpeg, findAgain } from './scan.js';
+import { updateLetterbox, stepLetterbox } from './letterbox.js';
 
 // ============================================================================
 // SBMUFL DATA + THEORY DATA
@@ -678,7 +679,7 @@ function render() {
       // Transcription mode: the line of the scan, above the notes written for it,
       // and after the notes of the line before, the cover its arrows move
       // (which takes the rest of that row, as a line's fill would)
-      if (!showScan()) continue;      // hidden: no second insert point beside the last one
+      if (!showStrips()) continue;    // hidden: no second insert point beside the last one
       const cover = coverHtml(i);
       if (cover) { html += cover; endMartyria = -1; } else fill();
       html += stripHtml(score.scan, el.line, { zoomed: zoomedLines.has(el.line), read: readOffer(el.line), off: martyriaOff.lines.get(el.line) || '' });
@@ -729,8 +730,10 @@ function render() {
   // The scan's pictures come from this browser's store, after the first draw
   if (showScan()) loadPages(score.scan).then(got => { if (got) render(); });
   if (hasScan()) keepInAccount();
+  // Letterbox: the slit of the scan above the score (letterbox.js)
+  updateLetterbox(score.scan, { visible: showScan() && inLetterbox(), changed: () => {}, sheet: openScanSheet });
   // Whether Claude can read lines here (for each empty line's Read button)
-  if (showScan() && !readState && !readAsked) { readAsked = true; readStatus().then(st => { if (st.ready) render(); }); }
+  if (showStrips() && !readState && !readAsked) { readAsked = true; readStatus().then(st => { if (st.ready) render(); }); }
 
   // Update palette validity indicators
   renderPalette();
@@ -1332,7 +1335,7 @@ function initToolbar() {
       // With the scan hidden, the start of one of its lines is invisible:
       // backspace goes past it to the symbol before
       let t = p - 1;
-      while (!showScan() && t >= 0 && isScanLine(score.elements[t])) t--;
+      while (!showStrips() && t >= 0 && isScanLine(score.elements[t])) t--;
       if (t < 0) return;
       if (!deleteKeepingWords(t)) return;
       focusSymbol(p - 1);     // the pending symbol moves back one
@@ -2042,6 +2045,10 @@ function initComposePad() {
     else { refresh(); return false; }
     return true;
   };
+  // Letterbox: the scan's slit to its next line, from the thumb
+  const line = document.getElementById('pad-line');
+  line.addEventListener('pointerdown', (e) => e.stopPropagation());
+  line.addEventListener('click', () => { stepLetterbox(1); haptic(); });
   for (const [id, go] of [['pad-prev', back], ['pad-next', commitAndAdvance]]) {
     const btn = document.getElementById(id);
     btn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -2632,8 +2639,12 @@ let scanHidden = (() => { try { return localStorage.getItem(SCAN_VIEW_KEY) === '
 const zoomedLines = new Set();
 
 const isScanLine = (el) => el?.type === 'scanline';
-const hasScan = () => !!score.scan?.lines?.length;
+const hasScan = () => !!score.scan?.pages?.length;
 const showScan = () => !viewOnly && !scanHidden && hasScan();
+// Letterbox (letterbox.js): the scan is not cut into lines, a slit of it
+// stays above the score instead; any lines it has are kept but not drawn
+const inLetterbox = () => score.scan?.view === 'letterbox';
+const showStrips = () => showScan() && !inLetterbox() && !!score.scan.lines?.length;
 
 function setScanHidden(hidden) {
   scanHidden = hidden;
@@ -2650,6 +2661,8 @@ function markScanButton() {
   btn.setAttribute('aria-pressed', hasScan() ? String(on) : 'false');
   btn.title = !hasScan() ? 'Transcribe from a scan: show a photo or PDF of a score line by line above your notes'
     : on ? 'Hide the scan, for more room' : 'Show the scan above the notes';
+  const line = document.getElementById('pad-line');
+  if (line) line.hidden = !(on && inLetterbox());
 }
 
 // Signed in, the scan's pictures (and the PDF they came from) go to the
@@ -2674,13 +2687,16 @@ function keepInAccount(force = false) {
 // their part of the page changes); lines added go after the last notes and
 // lines taken away go. On a score without a scan the lines are spread over
 // its notes evenly (the heading gets none), to be set right with the arrows.
-function applyScan(pages) {
+// With letterbox, the pages are kept uncut: the lines already set stay as
+// they were (not drawn), and a slit of the pages shows above the score.
+function applyScan(pages, { letterbox = false } = {}) {
   dropPlaceholder();
   pushHistory();
-  const lines = linesFromPages(pages);
   const oldPages = score.scan?.pages || [];
   const oldLines = score.scan?.lines || [];
-  lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; if (oldLines[k]?.read) l.read = oldLines[k].read; });
+  const slit = score.scan?.slit;
+  const lines = letterbox ? oldLines.filter(l => pages.some(p => p.id === l.page)) : linesFromPages(pages);
+  if (!letterbox) lines.forEach((l, k) => { if (oldLines[k]?.by) l.by = oldLines[k].by; if (oldLines[k]?.read) l.read = oldLines[k].read; });
   // The files the pages came from (a PDF): new ones arrive as objects, kept ones by id
   const known = new Map([...(score.scan?.sources || []).map(x => [x.id, x]), ...pages.filter(p => p.src?.id).map(p => [p.src.id, p.src])]);
   const srcOf = (p) => p.src?.id || p.src;
@@ -2691,14 +2707,22 @@ function applyScan(pages) {
     pages: pages.map(p => ({ id: p.id, w: p.w, h: p.h, ...(p.musicTop ? { musicTop: p.musicTop } : {}), ...(p.skew?.length ? { skew: p.skew } : {}), ...(srcOf(p) ? { src: srcOf(p) } : {}) })),
     lines,
     ...(sources.length ? { sources } : {}),
+    ...(letterbox ? { view: 'letterbox' } : {}),
+    ...(slit ? { slit } : {}),
   };
   // The lines above the music (title, tone): no notes, nothing to read
-  const head = headingLines(lines, pages);
+  const head = letterbox ? 0 : headingLines(lines, pages);
   lines.forEach((l, k) => { if (k < head) l.heading = true; });
   for (const p of oldPages) if (!pages.some(q => q.id === p.id)) deleteFile(p.id, score.metadata?.id);
   for (const x of oldSources) if (!used.has(x.id)) deleteFile(x.id, score.metadata?.id);
   keepInAccount(true);
   zoomedLines.clear();
+  if (letterbox) {
+    scanHidden = false;
+    enterBlank(score.elements.length);
+    refresh();
+    return;
+  }
 
   const placed = score.elements.filter(isScanLine).length;
   if (placed) {
@@ -3026,19 +3050,34 @@ async function importScan(add = false, picked = null) {
   }
   document.getElementById('toast').hidden = true;
   const before = add && hasScan() ? cutsFromLines(score.scan) : [];
-  const done = await openCutter([...before, ...pages]);
+  const done = await openCutter([...before, ...pages], { letterbox: true });
   if (!done) {
     for (const p of pages) deletePage(p.id);
     for (const id of new Set(pages.map(p => p.src?.id).filter(Boolean))) deletePage(id);
     return;
   }
-  applyScan(done);
+  applyScan(done.pages || done, { letterbox: !!done.letterbox });
 }
 
+// Cut the scan into lines (again): the cutter, from where the lines are
 async function adjustScan() {
   await loadPages(score.scan);
-  const done = await openCutter(cutsFromLines(score.scan));
-  if (done) applyScan(done);
+  const pages = cutsFromLines(score.scan);
+  // Pages with no lines yet (a letterbox): found afresh
+  for (const p of pages) if (p.cuts.length < 2) Object.assign(p, await findAgain(p) || { cuts: [0, p.h] });
+  const done = await openCutter(pages, { letterbox: true });
+  if (done) applyScan(done.pages || done, { letterbox: !!done.letterbox });
+}
+
+// Between the letterbox and the lines, keeping both: lines the scan
+// already has show again; with none yet, the cutter makes them
+function setScanView(letterbox) {
+  if (letterbox === inLetterbox()) return;
+  if (!letterbox && !score.scan.lines?.length) { adjustScan(); return; }
+  if (letterbox) score.scan.view = 'letterbox';
+  else delete score.scan.view;
+  scanHidden = false;
+  refresh();
 }
 
 function openScanSheet() {
@@ -3059,10 +3098,21 @@ function renderScanSheet() {
   }
   const n = score.scan.lines.length;
   const pages = score.scan.pages.length;
+  const lb = inLetterbox();
+  const about = lb
+    ? `${pages} page${pages === 1 ? '' : 's'}, in the letterbox: a slit of the scan stays above the score. Drag in it to move the page, pinch or tap the zoom to enlarge it, and ▼ (or Line, over the pad) takes it to the next line. Drag the bar under it to make it taller or shorter.`
+    : `${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it. The arrows after a line's last note move it on or back a note.`;
   body.innerHTML = `
     <div class="sheet-label">This score's scan</div>
-    <p class="share-note">${pages} page${pages === 1 ? '' : 's'}, ${n} line${n === 1 ? '' : 's'}. Each line shows above its notes; tap it to enlarge it. The arrows after a line's last note move it on or back a note. Scan at the top shows and hides the scan.</p>
-    ${readSheetHtml()}
+    <p class="share-note">${about} Scan at the top shows and hides the scan.</p>
+    <div class="scan-sheet-row">
+      <span>View</span>
+      <span class="scan-view-pick" role="group" aria-label="View">
+        <button type="button" class="header-btn${lb ? '' : ' accent'}" data-scan-view="lines" aria-pressed="${!lb}">Lines</button>
+        <button type="button" class="header-btn${lb ? ' accent' : ''}" data-scan-view="letterbox" aria-pressed="${lb}">Letterbox</button>
+      </span>
+    </div>
+    ${lb ? '' : readSheetHtml()}
     ${filesSheetHtml()}
     <div class="scan-sheet-row">
       <span>Show the scan</span>
@@ -3071,7 +3121,7 @@ function renderScanSheet() {
     <div class="sheet-actions scan-actions">
       <button type="button" class="header-btn" data-scan-remove>Remove</button>
       <button type="button" class="header-btn" data-scan-more>Add pages</button>
-      <button type="button" class="header-btn" data-scan-adjust>Adjust lines</button>
+      <button type="button" class="header-btn" data-scan-adjust>${n ? 'Adjust lines' : 'Cut into lines'}</button>
     </div>`;
 }
 
@@ -3354,6 +3404,12 @@ function initScan() {
     else if (e.target.closest('[data-scan-adjust]')) { close(); adjustScan(); }
     else if (e.target.closest('[data-scan-readall]')) { close(); readLines(score.scan.lines.map((_, k) => k)); }
     else if (e.target.closest('[data-scan-toggle]')) { setScanHidden(!scanHidden); renderScanSheet(); }
+    else if (e.target.closest('[data-scan-view]')) {
+      const lb = e.target.closest('[data-scan-view]').dataset.scanView === 'letterbox';
+      if (!lb && !score.scan.lines?.length) close();
+      setScanView(lb);
+      if (!sheet.hidden) renderScanSheet();
+    }
     else if (e.target.closest('[data-scan-source]')) downloadSource(parseInt(e.target.closest('[data-scan-source]').dataset.scanSource));
     else if (e.target.closest('[data-scan-remove]')) {
       if (!confirm('Remove the scan from this score? The notes stay.')) return;

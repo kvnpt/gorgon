@@ -444,7 +444,7 @@ export function detectLines(canvas) {
 }
 
 /** A page's lines found afresh from its picture: { cuts, skew, musicTop }, or null without it */
-async function findAgain(page) {
+export async function findAgain(page) {
   const url = page.url || pageUrl(page.id);
   if (!url) return null;
   const img = await new Promise((resolve) => {
@@ -609,7 +609,9 @@ export function stripHtml(scan, k, { zoomed = false, read = '', off = '' } = {})
 // page to add one. Resolves with the pages and their cuts, or null.
 // ---------------------------------------------------------------------------
 
-export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
+// With letterbox, the hint offers the letterbox instead (letterbox.js): the
+// promise then resolves { letterbox: true, pages } with the pages uncut.
+export function openCutter(pages, { title = 'Lines of the scan', letterbox = false } = {}) {
   return new Promise((resolve) => {
     const sheet = document.createElement('div');
     sheet.className = 'cutter';
@@ -625,7 +627,8 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
         <span class="cutter-title"></span>
         <button type="button" class="header-btn accent" data-done>Use</button>
       </div>
-      <p class="cutter-hint">Each band is one line of the score: its neumes and its words. Drag an orange line to move it, tap its handle to remove it, tap the page to add one.${pages.some(p => p.url) ? ' <button type="button" class="cutter-again" data-again>Find the lines again</button>' : ''}</p>
+      <p class="cutter-hint">Each band is one line of the score: its neumes and its words. Drag an orange line to move it, tap its handle to remove it, tap the page to add one.${pages.some(p => p.url) ? ' <button type="button" class="cutter-again" data-again>Find the lines again</button>' : ''}${letterbox ? `</p>
+      <p class="cutter-hint cutter-lb">Hard to cut? <button type="button" class="cutter-again" data-letterbox>Use a letterbox</button> instead: no lines, just a slit of the page above your notes that you move along as you write.` : ''}</p>
       <div class="cutter-pages"></div>`;
     const wrap = sheet.querySelector('.cutter-pages');
 
@@ -720,6 +723,7 @@ export function openCutter(pages, { title = 'Lines of the scan' } = {}) {
     });
     sheet.querySelector('[data-cancel]').addEventListener('click', () => close(null));
     sheet.querySelector('[data-done]').addEventListener('click', () => close(state));
+    sheet.querySelector('[data-letterbox]')?.addEventListener('click', () => close({ letterbox: true, pages: state }));
 
     draw();
     document.body.appendChild(sheet);
