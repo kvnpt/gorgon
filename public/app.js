@@ -65,6 +65,9 @@ let cursorPos = 0;
 let selectedIdx = -1;
 let analysisResult = [];
 let history = [];
+// The neume the last swipe left combined (and the undo depth then), so the
+// next sideways swipe can take it apart again
+let swipeCombined = null;
 const MAX_HISTORY = 200;
 
 // The pending symbol sitting in a blank spot (see COMPOSE PAD). It is part
@@ -2121,14 +2124,29 @@ function initComposePad() {
       refresh();
     },
 
-    // Sideways: the note's time. Right lengthens, left shortens; a pair
-    // that can be combined is combined by the first swipe left.
+    // Sideways: the note's time. Right lengthens, left shortens. Where a
+    // pair can be combined, combining is the first step left from a note
+    // without a time sign: the next swipe left takes the pair apart again
+    // and puts a gorgon on the note (then digorgon...), and a swipe right
+    // takes it apart back to the plain note.
     onSwipe(side) {
       const dir = side === 'right' ? 1 : -1;
-      const el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
-      const pair = dir < 0 && !lyricMode ? pairAtFocus() : null;
+      let el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+      const combined = swipeCombined;
+      swipeCombined = null;
+      if (combined && el === combined.el && history.length === combined.depth) {
+        undo();
+        if (dir > 0) { haptic(); return; }
+        el = selectedIdx >= 0 ? score.elements[selectedIdx] : null;
+        if (el?.type !== 'note') { haptic(); return; }
+      }
+      const plain = el?.type !== 'note' || plainTime(el);
+      const pair = dir < 0 && plain && !combined && !lyricMode ? pairAtFocus() : null;
       if (pair) {
         if (!combinePair(pair.idx)) return;
+        if (selectedIdx >= 0) {
+          swipeCombined = { el: score.elements[selectedIdx], depth: history.length };
+        }
       } else if (el?.type === 'note') {
         const step = timeStep(el, dir);
         if (!step) return;
